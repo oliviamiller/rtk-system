@@ -1,4 +1,4 @@
-package rtkstation
+package main
 
 import (
 	"context"

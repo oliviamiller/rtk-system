@@ -1,4 +1,4 @@
-package rtkstation
+package main
 
 import (
 	"context"
@@ -13,8 +13,36 @@ import (
 	"go.viam.com/rdk/components/board"
 	"go.viam.com/rdk/components/movementsensor"
 	"go.viam.com/rdk/components/sensor"
+	"go.viam.com/rdk/module"
 	"go.viam.com/rdk/resource"
 )
+
+func main() {
+	utils.ContextualMain(mainWithArgs, golog.NewDevelopmentLogger("base-station"))
+}
+
+func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err error) {
+	resource.RegisterComponent(
+		sensor.API,
+		stationModel,
+		resource.Registration[sensor.Sensor, *StationConfig]{
+			Constructor: newRTKStation,
+		})
+	modalModule, err := module.NewModuleFromArgs(ctx, logger)
+
+	if err != nil {
+		return err
+	}
+	modalModule.AddModelFromRegistry(ctx, sensor.API, stationModel)
+
+	err = modalModule.Start(ctx)
+	defer modalModule.Close(ctx)
+	if err != nil {
+		return err
+	}
+	<-ctx.Done()
+	return nil
+}
 
 var stationModel = resource.NewModel("viam-labs", "sensor", "correction-station")
 
@@ -110,16 +138,6 @@ func (cfg *SerialConfig) ValidateSerial(path string) error {
 		return utils.NewConfigValidationFieldRequiredError(path, "serial_path")
 	}
 	return nil
-}
-
-func init() {
-	resource.RegisterComponent(
-		sensor.API,
-		stationModel,
-		resource.Registration[sensor.Sensor, *StationConfig]{
-			Constructor: newRTKStation,
-		})
-
 }
 
 type rtkStation struct {

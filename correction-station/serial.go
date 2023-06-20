@@ -1,4 +1,4 @@
-package rtkstation
+package main
 
 import (
 	"context"
@@ -79,7 +79,7 @@ func newSerialCorrectionSource(conf *StationConfig, logger golog.Logger) (correc
 	baudRate := conf.SerialBaudRate
 	if baudRate == 0 {
 		baudRate = 9600
-		s.logger.Info("serial baud rate: correction_baud using default 9600")
+		s.logger.Info("correction baud	: correction_baud using default 9600")
 	}
 
 	if conf.SerialConfig.TestChan != nil {
