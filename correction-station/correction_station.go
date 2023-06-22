@@ -25,7 +25,7 @@ const (
 
 var (
 	StationModel         = resource.NewModel("viam-labs", "sensor", "correction-station")
-	errStationValidation = fmt.Errorf("only serial, I2C are supported for %s", StationModel.Name)
+	errStationValidation = fmt.Errorf("only serial, i2c are supported for %s", StationModel.Name)
 	errRequiredAccuracy  = errors.New("required accuracy can be a fixed number 1-5, 5 being the highest accuracy")
 )
 
