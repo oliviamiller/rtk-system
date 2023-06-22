@@ -49,7 +49,7 @@ func init() {
 		})
 }
 
-// StationConfig is used for converting RTK MovementSensor config attributes.
+// Config is used for the base station attributes.
 type Config struct {
 	Protocol string `json:"protocol"`
 
