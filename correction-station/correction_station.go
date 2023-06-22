@@ -210,7 +210,11 @@ func newRTKStation(
 		r.logger.Debug("Init serial writer")
 		r.serialWriter = io.Writer(port)
 	case i2cStr:
-		//TODO RSDK-3755 add i2c to this
+		var err error
+		r.correctionSource, err = newI2CCorrectionSource(deps, newConf, logger)
+		if err != nil {
+			return nil, err
+		}
 	default:
 		// Invalid protocol
 		return nil, fmt.Errorf("%s is not a valid correction source protocol", r.protocol)
@@ -247,9 +251,11 @@ func (r *rtkStation) start(ctx context.Context) {
 			r.err.Set(err)
 			return
 		}
-
-		// reader will write stream to the serial port
-		reader := io.TeeReader(stream, r.serialWriter)
+		var reader io.Reader
+		if r.protocol == serialStr {
+			// reader will write stream to the serial port
+			reader = io.TeeReader(stream, r.serialWriter)
+		}
 
 		// write corrections to the serial port/i2c handle
 		for {
@@ -258,18 +264,44 @@ func (r *rtkStation) start(ctx context.Context) {
 				return
 			default:
 			}
-
 			buf := make([]byte, 1100)
-			n, err := reader.Read(buf)
-			r.logger.Debugf("Reading %d bytes", n)
-			if err != nil {
-				if err.Error() == "io: read/write on closed pipe" {
-					r.logger.Debug("Pipe closed")
+			switch r.protocol {
+			case serialStr:
+				n, err := reader.Read(buf)
+				r.logger.Debugf("Reading %d bytes", n)
+				if err != nil {
+					if err.Error() == "io: read/write on closed pipe" {
+						r.logger.Debug("Pipe closed")
+						return
+					}
+					r.logger.Errorf("Unable to read stream: %s", err)
+					r.err.Set(err)
 					return
 				}
-				r.logger.Errorf("Unable to read stream: %s", err)
-				r.err.Set(err)
-				return
+			case i2cStr:
+				// write buf to the i2c handle
+				// open handle
+				busAddr := r.i2cPath
+				handle, err := busAddr.bus.OpenHandle(busAddr.addr)
+				if err != nil {
+					r.logger.Errorf("can't open movementsensor i2c handle: %s", err)
+					r.err.Set(err)
+					return
+				}
+				// write to i2c handle
+				err = handle.Write(ctx, buf)
+				if err != nil {
+					r.logger.Errorf("i2c handle write failed %s", err)
+					r.err.Set(err)
+					return
+				}
+				// close i2c handle
+				err = handle.Close()
+				if err != nil {
+					r.logger.Errorf("failed to close handle: %s", err)
+					r.err.Set(err)
+					return
+				}
 			}
 		}
 	})
