@@ -78,8 +78,8 @@ func newSerialCorrectionSource(conf *StationConfig, logger golog.Logger) (correc
 
 	baudRate := conf.SerialBaudRate
 	if baudRate == 0 {
-		baudRate = 9600
-		s.logger.Info("correction baud	: correction_baud using default 9600")
+		baudRate = 38400
+		s.logger.Info("Using default baud rate 38400")
 	}
 
 	if conf.SerialConfig.TestChan != nil {

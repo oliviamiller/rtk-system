@@ -17,6 +17,18 @@ import (
 	"go.viam.com/rdk/resource"
 )
 
+const (
+	i2cStr    = "i2c"
+	serialStr = "serial"
+	timeMode  = "time"
+)
+
+var (
+	StationModel         = resource.NewModel("viam-labs", "sensor", "correction-station")
+	errStationValidation = fmt.Errorf("only serial, I2C are supported for %s", StationModel.Name)
+	errRequiredAccuracy  = errors.New("required accuracy can be a fixed number 1-5, 5 being the highest accuracy")
+)
+
 func init() {
 	resource.RegisterComponent(
 		sensor.API,
@@ -36,8 +48,6 @@ func init() {
 			},
 		})
 }
-
-var StationModel = resource.NewModel("viam-labs", "sensor", "correction-station")
 
 // StationConfig is used for converting RTK MovementSensor config attributes.
 type StationConfig struct {
@@ -67,19 +77,6 @@ type I2CConfig struct {
 	I2CBaudRate int    `json:"i2c_baud_rate,omitempty"`
 }
 
-const (
-	i2cStr    = "i2c"
-	serialStr = "serial"
-	ntripStr  = "ntrip"
-	timeMode  = "time"
-)
-
-// ErrStationValidation contains the model substring for the available correction source types.
-var (
-	ErrStationValidation = fmt.Errorf("only serial, I2C are supported for %s", StationModel.Name)
-	errRequiredAccuracy  = errors.New("required accuracy can be a fixed number 1-5, 5 being the highest accuracy")
-)
-
 // Validate ensures all parts of the config are valid.
 func (cfg *StationConfig) Validate(path string) ([]string, error) {
 	var deps []string
@@ -102,12 +99,12 @@ func (cfg *StationConfig) Validate(path string) ([]string, error) {
 		return deps, cfg.I2CConfig.ValidateI2C(path)
 	case serialStr:
 		if cfg.SerialConfig.SerialPath == "" {
-			return nil, utils.NewConfigValidationFieldRequiredError(path, "serial_correction_path")
+			return nil, utils.NewConfigValidationFieldRequiredError(path, "serial_path")
 		}
 	case "":
-		return nil, utils.NewConfigValidationFieldRequiredError(path, "correction_source")
+		return nil, utils.NewConfigValidationFieldRequiredError(path, "protocol")
 	default:
-		return nil, ErrStationValidation
+		return nil, errStationValidation
 	}
 
 	return deps, nil
@@ -192,6 +189,11 @@ func newRTKStation(
 		if err != nil {
 			return nil, err
 		}
+		// set a default baud rate if not specficed in config
+		if newConf.SerialBaudRate == 0 {
+			newConf.SerialBaudRate = 38400
+		}
+
 		options := serial.OpenOptions{
 			PortName:        newConf.SerialPath,
 			BaudRate:        uint(newConf.SerialBaudRate),
@@ -220,7 +222,7 @@ func newRTKStation(
 	return r, r.err.Get()
 }
 
-// Start starts reading from the correction source and sends corrections to the child movementsensor's.
+// Start starts reading from the correction source and sends corrections to the radio/bluetooth.
 func (r *rtkStation) Start(ctx context.Context) {
 	r.activeBackgroundWorkers.Add(1)
 	utils.PanicCapturingGo(func() {
@@ -296,6 +298,7 @@ func (r *rtkStation) Close(ctx context.Context) error {
 	return nil
 }
 
+// TODO: add readings for fix and num sats in view
 func (r *rtkStation) Readings(ctx context.Context, extra map[string]interface{}) (map[string]interface{}, error) {
-	return map[string]interface{}{}, errors.New("inp")
+	return map[string]interface{}{}, errors.New("unimplemented")
 }
