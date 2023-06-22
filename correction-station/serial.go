@@ -61,7 +61,7 @@ const (
 	baudRateName       = "correction_baud"
 )
 
-func newSerialCorrectionSource(conf *StationConfig, logger golog.Logger) (correctionSource, error) {
+func newSerialCorrectionSource(conf *Config, logger golog.Logger) (correctionSource, error) {
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
 
 	s := &serialCorrectionSource{

@@ -74,7 +74,7 @@ type configCommand struct {
 }
 
 // ConfigureBaseRTKStation configures an RTK chip to act as a base station and send correction data.
-func ConfigureBaseRTKStation(newConf *StationConfig) error {
+func ConfigureBaseRTKStation(newConf *Config) error {
 
 	correctionType := newConf.Protocol
 	requiredAcc := newConf.RequiredAccuracy
@@ -120,7 +120,7 @@ func ConfigureBaseRTKStation(newConf *StationConfig) error {
 	return nil
 }
 
-func (c *configCommand) serialConfigure(newConf *StationConfig) error {
+func (c *configCommand) serialConfigure(newConf *Config) error {
 
 	portName := newConf.SerialConfig.SerialPath
 	if portName == "" {

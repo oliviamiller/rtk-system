@@ -25,7 +25,7 @@ const (
 
 var (
 	StationModel         = resource.NewModel("viam-labs", "sensor", "correction-station")
-	errStationValidation = fmt.Errorf("only serial, I2C are supported for %s", StationModel.Name)
+	errStationValidation = fmt.Errorf("only serial, i2c are supported for %s", StationModel.Name)
 	errRequiredAccuracy  = errors.New("required accuracy can be a fixed number 1-5, 5 being the highest accuracy")
 )
 
@@ -33,14 +33,14 @@ func init() {
 	resource.RegisterComponent(
 		sensor.API,
 		StationModel,
-		resource.Registration[sensor.Sensor, *StationConfig]{
+		resource.Registration[sensor.Sensor, *Config]{
 			Constructor: func(
 				ctx context.Context,
 				deps resource.Dependencies,
 				conf resource.Config,
 				logger golog.Logger,
 			) (sensor.Sensor, error) {
-				newConf, err := resource.NativeConfig[*StationConfig](conf)
+				newConf, err := resource.NativeConfig[*Config](conf)
 				if err != nil {
 					return nil, err
 				}
@@ -50,7 +50,7 @@ func init() {
 }
 
 // StationConfig is used for converting RTK MovementSensor config attributes.
-type StationConfig struct {
+type Config struct {
 	Protocol string `json:"protocol"`
 
 	RequiredAccuracy float64 `json:"required_accuracy,omitempty"` // fixed number 1-5, 5 being the highest accuracy
@@ -78,7 +78,7 @@ type I2CConfig struct {
 }
 
 // Validate ensures all parts of the config are valid.
-func (cfg *StationConfig) Validate(path string) ([]string, error) {
+func (cfg *Config) Validate(path string) ([]string, error) {
 	var deps []string
 	if cfg.RequiredAccuracy == 0 {
 		return nil, utils.NewConfigValidationFieldRequiredError(path, "required_accuracy")
@@ -161,7 +161,7 @@ func newRTKStation(
 	ctx context.Context,
 	deps resource.Dependencies,
 	name resource.Name,
-	newConf *StationConfig,
+	newConf *Config,
 	logger golog.Logger,
 ) (sensor.Sensor, error) {
 
@@ -218,12 +218,12 @@ func newRTKStation(
 
 	r.logger.Debug("Starting")
 
-	r.Start(ctx)
+	r.start(ctx)
 	return r, r.err.Get()
 }
 
 // Start starts reading from the correction source and sends corrections to the radio/bluetooth.
-func (r *rtkStation) Start(ctx context.Context) {
+func (r *rtkStation) start(ctx context.Context) {
 	r.activeBackgroundWorkers.Add(1)
 	utils.PanicCapturingGo(func() {
 		defer r.activeBackgroundWorkers.Done()
