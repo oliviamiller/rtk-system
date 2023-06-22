@@ -1,4 +1,4 @@
-package main
+package station
 
 import (
 	"context"
@@ -7,44 +7,37 @@ import (
 	"sync"
 
 	"github.com/edaniels/golog"
+	"github.com/jacobsa/go-serial/serial"
 	"github.com/pkg/errors"
 	"go.viam.com/utils"
 
 	"go.viam.com/rdk/components/board"
 	"go.viam.com/rdk/components/movementsensor"
 	"go.viam.com/rdk/components/sensor"
-	"go.viam.com/rdk/module"
 	"go.viam.com/rdk/resource"
 )
 
-func main() {
-	utils.ContextualMain(mainWithArgs, golog.NewDevelopmentLogger("base-station"))
-}
-
-func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err error) {
+func init() {
 	resource.RegisterComponent(
 		sensor.API,
-		stationModel,
+		StationModel,
 		resource.Registration[sensor.Sensor, *StationConfig]{
-			Constructor: newRTKStation,
+			Constructor: func(
+				ctx context.Context,
+				deps resource.Dependencies,
+				conf resource.Config,
+				logger golog.Logger,
+			) (sensor.Sensor, error) {
+				newConf, err := resource.NativeConfig[*StationConfig](conf)
+				if err != nil {
+					return nil, err
+				}
+				return newRTKStation(ctx, deps, conf.ResourceName(), newConf, logger)
+			},
 		})
-	modalModule, err := module.NewModuleFromArgs(ctx, logger)
-
-	if err != nil {
-		return err
-	}
-	modalModule.AddModelFromRegistry(ctx, sensor.API, stationModel)
-
-	err = modalModule.Start(ctx)
-	defer modalModule.Close(ctx)
-	if err != nil {
-		return err
-	}
-	<-ctx.Done()
-	return nil
 }
 
-var stationModel = resource.NewModel("viam-labs", "sensor", "correction-station")
+var StationModel = resource.NewModel("viam-labs", "sensor", "correction-station")
 
 // StationConfig is used for converting RTK MovementSensor config attributes.
 type StationConfig struct {
@@ -83,7 +76,7 @@ const (
 
 // ErrStationValidation contains the model substring for the available correction source types.
 var (
-	ErrStationValidation = fmt.Errorf("only serial, I2C are supported for %s", stationModel.Name)
+	ErrStationValidation = fmt.Errorf("only serial, I2C are supported for %s", StationModel.Name)
 	errRequiredAccuracy  = errors.New("required accuracy can be a fixed number 1-5, 5 being the highest accuracy")
 )
 
@@ -146,8 +139,7 @@ type rtkStation struct {
 	logger           golog.Logger
 	correctionSource correctionSource
 	protocol         string
-	i2cPaths         []i2cBusAddr
-	serialPorts      []io.Writer
+	i2cPath          i2cBusAddr
 	serialWriter     io.Writer
 
 	cancelCtx               context.Context
@@ -171,18 +163,15 @@ type i2cBusAddr struct {
 func newRTKStation(
 	ctx context.Context,
 	deps resource.Dependencies,
-	conf resource.Config,
+	name resource.Name,
+	newConf *StationConfig,
 	logger golog.Logger,
 ) (sensor.Sensor, error) {
-	newConf, err := resource.NativeConfig[*StationConfig](conf)
-	if err != nil {
-		return nil, err
-	}
 
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
 
 	r := &rtkStation{
-		Named:      conf.ResourceName().AsNamed(),
+		Named:      name.AsNamed(),
 		cancelCtx:  cancelCtx,
 		cancelFunc: cancelFunc,
 		logger:     logger,
@@ -194,24 +183,35 @@ func newRTKStation(
 	// Init correction source
 	switch r.protocol {
 	case serialStr:
+		err := ConfigureBaseRTKStation(newConf)
+		if err != nil {
+			r.logger.Info("rtk base station could not be configured")
+			return r, err
+		}
 		r.correctionSource, err = newSerialCorrectionSource(newConf, logger)
 		if err != nil {
 			return nil, err
 		}
-	case i2cStr:
-		r.correctionSource, err = newI2CCorrectionSource(deps, newConf, logger)
+		options := serial.OpenOptions{
+			PortName:        newConf.SerialPath,
+			BaudRate:        uint(newConf.SerialBaudRate),
+			DataBits:        8,
+			StopBits:        1,
+			MinimumReadSize: 4,
+		}
+
+		port, err := serial.Open(options)
 		if err != nil {
 			return nil, err
 		}
+
+		r.logger.Debug("Init serial writer")
+		r.serialWriter = io.Writer(port)
+	case i2cStr:
+		//TODO RSDK-3755 add i2c to this
 	default:
 		// Invalid protocol
 		return nil, fmt.Errorf("%s is not a valid correction source protocol", r.protocol)
-	}
-
-	err = ConfigureBaseRTKStation(conf)
-	if err != nil {
-		r.logger.Info("rtk base station could not be configured")
-		return r, err
 	}
 
 	r.logger.Debug("Starting")
@@ -246,9 +246,10 @@ func (r *rtkStation) Start(ctx context.Context) {
 			return
 		}
 
+		// reader will write stream to the serial port
 		reader := io.TeeReader(stream, r.serialWriter)
 
-		// write corrections to all open ports and i2c handles
+		// write corrections to the serial port/i2c handle
 		for {
 			select {
 			case <-r.cancelCtx.Done():
@@ -268,31 +269,6 @@ func (r *rtkStation) Start(ctx context.Context) {
 				r.err.Set(err)
 				return
 			}
-
-			// write buf to all i2c handles
-			for _, busAddr := range r.i2cPaths {
-				// open handle
-				handle, err := busAddr.bus.OpenHandle(busAddr.addr)
-				if err != nil {
-					r.logger.Errorf("can't open movementsensor i2c handle: %s", err)
-					r.err.Set(err)
-					return
-				}
-				// write to i2c handle
-				err = handle.Write(ctx, buf)
-				if err != nil {
-					r.logger.Errorf("i2c handle write failed %s", err)
-					r.err.Set(err)
-					return
-				}
-				// close i2c handle
-				err = handle.Close()
-				if err != nil {
-					r.logger.Errorf("failed to close handle: %s", err)
-					r.err.Set(err)
-					return
-				}
-			}
 		}
 	})
 }
@@ -308,12 +284,10 @@ func (r *rtkStation) Close(ctx context.Context) error {
 		return err
 	}
 
-	// close all ports in slice
-	for _, port := range r.serialPorts {
-		err := port.(io.ReadWriteCloser).Close()
-		if err != nil {
-			return err
-		}
+	// close the serial port
+	err = r.serialWriter.(io.ReadWriteCloser).Close()
+	if err != nil {
+		return err
 	}
 
 	if err := r.err.Get(); err != nil && !errors.Is(err, context.Canceled) {

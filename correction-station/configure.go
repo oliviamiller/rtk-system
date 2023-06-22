@@ -1,4 +1,4 @@
-package main
+package station
 
 import (
 	"context"
@@ -7,8 +7,6 @@ import (
 
 	"github.com/jacobsa/go-serial/serial"
 	"github.com/pkg/errors"
-
-	"go.viam.com/rdk/resource"
 )
 
 const (
@@ -76,11 +74,8 @@ type configCommand struct {
 }
 
 // ConfigureBaseRTKStation configures an RTK chip to act as a base station and send correction data.
-func ConfigureBaseRTKStation(conf resource.Config) error {
-	newConf, err := resource.NativeConfig[*StationConfig](conf)
-	if err != nil {
-		return err
-	}
+func ConfigureBaseRTKStation(newConf *StationConfig) error {
+
 	correctionType := newConf.Protocol
 	requiredAcc := newConf.RequiredAccuracy
 	observationTime := newConf.RequiredTime
@@ -100,7 +95,7 @@ func ConfigureBaseRTKStation(conf resource.Config) error {
 
 	switch c.correctionType {
 	case serialStr:
-		err := c.serialConfigure(conf)
+		err := c.serialConfigure(newConf)
 		if err != nil {
 			return err
 		}
@@ -112,7 +107,7 @@ func ConfigureBaseRTKStation(conf resource.Config) error {
 		return err
 	}
 
-	err = c.disableAll(ubxNmeaMsb)
+	err := c.disableAll(ubxNmeaMsb)
 	if err != nil {
 		return err
 	}
@@ -125,11 +120,8 @@ func ConfigureBaseRTKStation(conf resource.Config) error {
 	return nil
 }
 
-func (c *configCommand) serialConfigure(conf resource.Config) error {
-	newConf, err := resource.NativeConfig[*StationConfig](conf)
-	if err != nil {
-		return err
-	}
+func (c *configCommand) serialConfigure(newConf *StationConfig) error {
+
 	portName := newConf.SerialConfig.SerialPath
 	if portName == "" {
 		return fmt.Errorf("serialCorrectionSource expected non-empty string for %q", correctionPathName)
