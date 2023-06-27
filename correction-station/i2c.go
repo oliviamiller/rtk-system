@@ -3,21 +3,21 @@ package station
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
+	"log"
 	"sync"
 
+	i2c "github.com/d2r2/go-i2c"
 	"github.com/edaniels/golog"
 	"go.viam.com/utils"
 
-	"go.viam.com/rdk/components/board"
 	"go.viam.com/rdk/components/movementsensor"
 	"go.viam.com/rdk/resource"
 )
 
 type i2cCorrectionSource struct {
 	logger golog.Logger
-	bus    board.I2C
+	bus    int
 	addr   byte
 
 	cancelCtx               context.Context
@@ -35,28 +35,12 @@ func newI2CCorrectionSource(
 	conf *Config,
 	logger golog.Logger,
 ) (correctionSource, error) {
-	b, err := board.FromDependencies(deps, conf.I2CConfig.Board)
-	if err != nil {
-		return nil, fmt.Errorf("gps init: failed to find board: %w", err)
-	}
-	localB, ok := b.(board.LocalBoard)
-	if !ok {
-		return nil, fmt.Errorf("board %s is not local", conf.Board)
-	}
-	i2cbus, ok := localB.I2CByName(conf.I2CBus)
-	if !ok {
-		return nil, fmt.Errorf("gps init: failed to find i2c bus %s", conf.I2CBus)
-	}
-	addr := conf.I2cAddr
-	if addr == -1 {
-		return nil, errors.New("must specify gps i2c address")
-	}
 
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
 
 	s := &i2cCorrectionSource{
-		bus:        i2cbus,
-		addr:       byte(addr),
+		bus:        conf.I2CBus,
+		addr:       byte(conf.I2CAddr),
 		cancelCtx:  cancelCtx,
 		cancelFunc: cancelFunc,
 		logger:     logger,
@@ -93,22 +77,20 @@ func (s *i2cCorrectionSource) Start(ready chan<- bool) {
 			return
 		}
 
-		// open I2C handle every time
-		handle, err := s.bus.OpenHandle(s.addr)
-		// Record the error value no matter what. If it's nil, this will prevent us from reporting
-		// ephemeral errors later.
-		s.err.Set(err)
-		if err != nil {
-			s.logger.Errorf("can't open gps i2c handle: %s", err)
-			return
-		}
-
 		// read from handle and pipe to correctionSource
-		buffer, err := handle.Read(context.Background(), 1024)
+		i2cBus, err := i2c.NewI2C(s.addr, s.bus)
+		s.err.Set(err)
+
+		buf := make([]byte, 1024)
+		log.Println("reading the bytes from i2c bus")
+		_, err = i2cBus.ReadBytes(buf)
+		log.Println(buf)
 		if err != nil {
 			s.logger.Debug("Could not read from handle")
 		}
-		_, err = w.Write(buffer)
+
+		log.Println(s.bus)
+		_, err = i2cBus.WriteBytes(buf)
 		s.err.Set(err)
 		if err != nil {
 			s.logger.Errorf("Error writing RTCM message: %s", err)
@@ -116,10 +98,10 @@ func (s *i2cCorrectionSource) Start(ready chan<- bool) {
 		}
 
 		// close I2C handle
-		err = handle.Close()
+		err = i2cBus.Close()
 		s.err.Set(err)
 		if err != nil {
-			s.logger.Debug("failed to close handle: %s", err)
+			s.logger.Debug("failed to close i2c handle: %s", err)
 			return
 		}
 
@@ -129,32 +111,29 @@ func (s *i2cCorrectionSource) Start(ready chan<- bool) {
 				return
 			default:
 			}
-
+			log.Println("here")
 			// Open I2C handle every time
-			handle, err := s.bus.OpenHandle(s.addr)
+			i2cBus, err := i2c.NewI2C(s.addr, s.bus)
+			s.err.Set(err)
+
+			_, err = i2cBus.ReadBytes(buf)
 			s.err.Set(err)
 			if err != nil {
 				s.logger.Errorf("can't open gps i2c handle: %s", err)
 				return
 			}
 
-			// read from handle and pipe to correctionSource
-			buffer, err := handle.Read(context.Background(), 1024)
-			if err != nil {
-				s.logger.Debug("Could not read from handle")
-			}
-			_, err = w.Write(buffer)
+			_, err = w.Write(buf)
 			s.err.Set(err)
 			if err != nil {
 				s.logger.Errorf("Error writing RTCM message: %s", err)
 				return
 			}
-
 			// close I2C handle
-			err = handle.Close()
+			err = i2cBus.Close()
 			s.err.Set(err)
 			if err != nil {
-				s.logger.Debug("failed to close handle: %s", err)
+				s.logger.Debug("failed to close i2c handle: %s", err)
 				return
 			}
 		}

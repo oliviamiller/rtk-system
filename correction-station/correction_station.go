@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"sync"
 
 	"github.com/edaniels/golog"
@@ -11,7 +12,6 @@ import (
 	"github.com/pkg/errors"
 	"go.viam.com/utils"
 
-	"go.viam.com/rdk/components/board"
 	"go.viam.com/rdk/components/movementsensor"
 	"go.viam.com/rdk/components/sensor"
 	"go.viam.com/rdk/resource"
@@ -49,7 +49,7 @@ func init() {
 		})
 }
 
-// StationConfig is used for converting RTK MovementSensor config attributes.
+// Config is used for converting RTK MovementSensor config attributes.
 type Config struct {
 	Protocol string `json:"protocol"`
 
@@ -71,10 +71,9 @@ type SerialConfig struct {
 
 // I2CConfig is used for converting attributes for a correction source.
 type I2CConfig struct {
-	Board       string `json:"board"`
-	I2CBus      string `json:"i2c_bus"`
-	I2cAddr     int    `json:"i2c_addr"`
-	I2CBaudRate int    `json:"i2c_baud_rate,omitempty"`
+	I2CBus      int `json:"i2c_bus"`
+	I2CAddr     int `json:"i2c_addr"`
+	I2CBaudRate int `json:"i2c_baud_rate,omitempty"`
 }
 
 // Validate ensures all parts of the config are valid.
@@ -92,10 +91,6 @@ func (cfg *Config) Validate(path string) ([]string, error) {
 
 	switch cfg.Protocol {
 	case i2cStr:
-		if cfg.I2CConfig.Board == "" {
-			return nil, utils.NewConfigValidationFieldRequiredError(path, "board")
-		}
-		deps = append(deps, cfg.I2CConfig.Board)
 		return deps, cfg.I2CConfig.ValidateI2C(path)
 	case serialStr:
 		if cfg.SerialConfig.SerialPath == "" {
@@ -112,10 +107,10 @@ func (cfg *Config) Validate(path string) ([]string, error) {
 
 // ValidateI2C ensures all parts of the config are valid.
 func (cfg *I2CConfig) ValidateI2C(path string) error {
-	if cfg.I2CBus == "" {
+	if cfg.I2CBus == 0 {
 		return utils.NewConfigValidationFieldRequiredError(path, "i2c_bus")
 	}
-	if cfg.I2cAddr == 0 {
+	if cfg.I2CAddr == 0 {
 		return utils.NewConfigValidationFieldRequiredError(path, "i2c_addr")
 	}
 
@@ -153,7 +148,7 @@ type correctionSource interface {
 }
 
 type i2cBusAddr struct {
-	bus  board.I2C
+	bus  int
 	addr byte
 }
 
@@ -164,6 +159,8 @@ func newRTKStation(
 	newConf *Config,
 	logger golog.Logger,
 ) (sensor.Sensor, error) {
+
+	log.Println("HERE!!!!!")
 
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
 
@@ -177,14 +174,15 @@ func newRTKStation(
 
 	r.protocol = newConf.Protocol
 
+	err := ConfigureBaseRTKStation(newConf)
+	if err != nil {
+		r.logger.Info("rtk base station could not be configured")
+		return r, err
+	}
+
 	// Init correction source
 	switch r.protocol {
 	case serialStr:
-		err := ConfigureBaseRTKStation(newConf)
-		if err != nil {
-			r.logger.Info("rtk base station could not be configured")
-			return r, err
-		}
 		r.correctionSource, err = newSerialCorrectionSource(newConf, logger)
 		if err != nil {
 			return nil, err
@@ -210,6 +208,10 @@ func newRTKStation(
 		r.logger.Debug("Init serial writer")
 		r.serialWriter = io.Writer(port)
 	case i2cStr:
+		log.Println("i2c")
+		r.i2cPath.addr = byte(newConf.I2CAddr)
+		r.i2cPath.bus = newConf.I2CBus
+		log.Println(r.i2cPath)
 		var err error
 		r.correctionSource, err = newI2CCorrectionSource(deps, newConf, logger)
 		if err != nil {
@@ -228,6 +230,7 @@ func newRTKStation(
 
 // Start starts reading from the correction source and sends corrections to the radio/bluetooth.
 func (r *rtkStation) start(ctx context.Context) {
+	log.Println("starting!!!!")
 	r.activeBackgroundWorkers.Add(1)
 	utils.PanicCapturingGo(func() {
 		defer r.activeBackgroundWorkers.Done()
@@ -278,30 +281,30 @@ func (r *rtkStation) start(ctx context.Context) {
 					r.err.Set(err)
 					return
 				}
-			case i2cStr:
+				/* case i2cStr:
 				// write buf to the i2c handle
 				// open handle
-				busAddr := r.i2cPath
-				handle, err := busAddr.bus.OpenHandle(busAddr.addr)
+				log.Println(r.i2cPath)
+				i2cBus, err := i2c.NewI2C(r.i2cPath.addr, r.i2cPath.bus)
 				if err != nil {
 					r.logger.Errorf("can't open movementsensor i2c handle: %s", err)
 					r.err.Set(err)
 					return
 				}
 				// write to i2c handle
-				err = handle.Write(ctx, buf)
+				_, err = i2cBus.WriteBytes(buf)
 				if err != nil {
 					r.logger.Errorf("i2c handle write failed %s", err)
 					r.err.Set(err)
 					return
 				}
 				// close i2c handle
-				err = handle.Close()
+				err = i2cBus.Close()
 				if err != nil {
 					r.logger.Errorf("failed to close handle: %s", err)
 					r.err.Set(err)
 					return
-				}
+				} */
 			}
 		}
 	})
