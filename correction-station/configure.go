@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 
 	i2c "github.com/d2r2/go-i2c"
+	"github.com/d2r2/go-logger"
 	"github.com/jacobsa/go-serial/serial"
 	"github.com/pkg/errors"
 )
@@ -79,8 +79,6 @@ type configCommand struct {
 
 // ConfigureBaseRTKStation configures an RTK chip to act as a base station and send correction data.
 func ConfigureBaseRTKStation(newConf *Config) error {
-
-	log.Println("configuring!")
 
 	correctionType := newConf.Protocol
 	requiredAcc := newConf.RequiredAccuracy
@@ -162,8 +160,6 @@ func (c *configCommand) serialConfigure(newConf *Config) error {
 
 func (c *configCommand) i2cConfigure(newConf *Config) error {
 
-	log.Println("i2c configure")
-
 	baudRate := newConf.I2CConfig.I2CBaudRate
 	if baudRate == 0 {
 		baudRate = 9600
@@ -175,6 +171,8 @@ func (c *configCommand) i2cConfigure(newConf *Config) error {
 	if err != nil {
 		return fmt.Errorf("gps init: failed to find i2c bus %d", newConf.I2CBus)
 	}
+
+	logger.ChangePackageLogLevel("i2c", logger.InfoLevel)
 
 	c.i2cbus = i2cBus
 
@@ -252,13 +250,10 @@ func (c *configCommand) sendCommandi2c(cls, id, msgLen int, payloadCfg []byte) (
 	packet[len(packet)-1] = byte(checksumB)
 	packet[len(packet)-2] = byte(checksumA)
 
-	log.Println(c.i2cbus)
-
 	_, err := c.i2cbus.WriteBytes(packet)
 
 	if err != nil {
-		log.Println(err)
-		log.Println("failed to write packet")
+		return nil, err
 	}
 
 	// then wait to capture a byte
@@ -267,7 +262,6 @@ func (c *configCommand) sendCommandi2c(cls, id, msgLen int, payloadCfg []byte) (
 	if err != nil {
 		return nil, err
 	}
-	log.Println(n)
 	return buf[:n], nil
 }
 

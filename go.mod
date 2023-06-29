@@ -4,13 +4,13 @@ go 1.18
 
 require (
 	github.com/d2r2/go-i2c v0.0.0-20191123181816-73a8a799d6bc
+	github.com/d2r2/go-logger v0.0.0-20210606094344-60e9d1233e22
 	github.com/edaniels/golog v0.0.0-20230215213219-28954395e8d0
 	github.com/go-gnss/rtcm v0.0.6
 	github.com/jacobsa/go-serial v0.0.0-20180131005756-15cf729a72d4
 	github.com/pkg/errors v0.9.1
 	go.viam.com/rdk v0.2.50
 	go.viam.com/utils v0.1.36
-	periph.io/x/conn/v3 v3.7.0
 )
 
 require (
@@ -22,7 +22,6 @@ require (
 	git.sr.ht/~sbinet/gg v0.3.1 // indirect
 	github.com/a8m/envsubst v1.4.2 // indirect
 	github.com/ajstarks/svgo v0.0.0-20211024235047-1546f124cd8b // indirect
-	github.com/alecthomas/participle/v2 v2.0.0-alpha3 // indirect
 	github.com/bamiaux/iobit v0.0.0-20170418073505-498159a04883 // indirect
 	github.com/benbjohnson/clock v1.3.3 // indirect
 	github.com/bep/debounce v1.2.1 // indirect
@@ -30,14 +29,12 @@ require (
 	github.com/campoy/embedmd v1.0.0 // indirect
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/cenkalti/backoff/v4 v4.2.1 // indirect
-	github.com/d2r2/go-logger v0.0.0-20210606094344-60e9d1233e22 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.2.0 // indirect
 	github.com/desertbit/timer v0.0.0-20180107155436-c41aec40b27f // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/edaniels/lidario v0.0.0-20220607182921-5879aa7b96dd // indirect
 	github.com/edaniels/zeroconf v1.0.10 // indirect
-	github.com/erh/scheme v0.0.0-20210304170849-99d295c6ce9a // indirect
 	github.com/erikstmartin/go-testdb v0.0.0-20160219214506-8d10e4a1bae5 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/fullstorydev/grpcurl v1.8.6 // indirect

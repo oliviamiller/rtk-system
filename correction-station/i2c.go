@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log"
 	"sync"
+	"time"
 
 	i2c "github.com/d2r2/go-i2c"
+	"github.com/d2r2/go-logger"
 	"github.com/edaniels/golog"
 	"go.viam.com/utils"
 
@@ -63,38 +64,28 @@ func (s *i2cCorrectionSource) Start(ready chan<- bool) {
 			return
 		}
 
-		var w *io.PipeWriter
 		s.correctionReaderMu.Lock()
 		if err := s.cancelCtx.Err(); err != nil {
 			s.correctionReaderMu.Unlock()
 			return
 		}
-		s.correctionReader, w = io.Pipe()
 		s.correctionReaderMu.Unlock()
 		select {
 		case ready <- true:
 		case <-s.cancelCtx.Done():
 			return
 		}
-
-		// read from handle and pipe to correctionSource
+		// read from handle
 		i2cBus, err := i2c.NewI2C(s.addr, s.bus)
 		s.err.Set(err)
 
+		// change so you don't see a million logs
+		logger.ChangePackageLogLevel("i2c", logger.InfoLevel)
+
 		buf := make([]byte, 1024)
-		log.Println("reading the bytes from i2c bus")
 		_, err = i2cBus.ReadBytes(buf)
-		log.Println(buf)
 		if err != nil {
 			s.logger.Debug("Could not read from handle")
-		}
-
-		log.Println(s.bus)
-		_, err = i2cBus.WriteBytes(buf)
-		s.err.Set(err)
-		if err != nil {
-			s.logger.Errorf("Error writing RTCM message: %s", err)
-			return
 		}
 
 		// close I2C handle
@@ -111,7 +102,8 @@ func (s *i2cCorrectionSource) Start(ready chan<- bool) {
 				return
 			default:
 			}
-			log.Println("here")
+			//get the rctm messages every 10 secs
+			time.Sleep(10 * time.Second)
 			// Open I2C handle every time
 			i2cBus, err := i2c.NewI2C(s.addr, s.bus)
 			s.err.Set(err)
@@ -123,12 +115,6 @@ func (s *i2cCorrectionSource) Start(ready chan<- bool) {
 				return
 			}
 
-			_, err = w.Write(buf)
-			s.err.Set(err)
-			if err != nil {
-				s.logger.Errorf("Error writing RTCM message: %s", err)
-				return
-			}
 			// close I2C handle
 			err = i2cBus.Close()
 			s.err.Set(err)
@@ -136,6 +122,7 @@ func (s *i2cCorrectionSource) Start(ready chan<- bool) {
 				s.logger.Debug("failed to close i2c handle: %s", err)
 				return
 			}
+
 		}
 	})
 }
