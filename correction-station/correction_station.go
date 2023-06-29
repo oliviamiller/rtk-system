@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 	"go.viam.com/utils"
 
+	"go.viam.com/rdk/components/board"
 	"go.viam.com/rdk/components/movementsensor"
 	"go.viam.com/rdk/components/sensor"
 	"go.viam.com/rdk/resource"
@@ -70,9 +71,10 @@ type SerialConfig struct {
 
 // I2CConfig is used for converting attributes for a correction source.
 type I2CConfig struct {
-	I2CBus      int `json:"i2c_bus"`
-	I2CAddr     int `json:"i2c_addr"`
-	I2CBaudRate int `json:"i2c_baud_rate,omitempty"`
+	Board       string `json:"board"`
+	I2CBus      string `json:"i2c_bus"`
+	I2cAddr     int    `json:"i2c_addr"`
+	I2CBaudRate int    `json:"i2c_baud_rate,omitempty"`
 }
 
 // Validate ensures all parts of the config are valid.
@@ -106,10 +108,10 @@ func (cfg *Config) Validate(path string) ([]string, error) {
 
 // ValidateI2C ensures all parts of the config are valid.
 func (cfg *I2CConfig) ValidateI2C(path string) error {
-	if cfg.I2CBus == 0 {
+	if cfg.I2CBus == "" {
 		return utils.NewConfigValidationFieldRequiredError(path, "i2c_bus")
 	}
-	if cfg.I2CAddr == 0 {
+	if cfg.I2cAddr == 0 {
 		return utils.NewConfigValidationFieldRequiredError(path, "i2c_addr")
 	}
 
@@ -146,7 +148,7 @@ type correctionSource interface {
 }
 
 type i2cBusAddr struct {
-	bus  int
+	bus  board.I2C
 	addr byte
 }
 
@@ -203,6 +205,8 @@ func newRTKStation(
 
 		r.logger.Debug("Init serial writer")
 		r.serialWriter = io.Writer(port)
+	case i2cStr:
+		//TODO RSDK-3755 add i2c to this
 	default:
 		// Invalid protocol
 		return nil, fmt.Errorf("%s is not a valid correction source protocol", r.protocol)

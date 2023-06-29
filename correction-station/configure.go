@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 
-	i2c "github.com/d2r2/go-i2c"
 	"github.com/jacobsa/go-serial/serial"
 	"github.com/pkg/errors"
 )
@@ -19,7 +18,6 @@ const (
 	ubxRtcm1094    = 0x5E // Galileo MSM4
 	ubxRtcm1124    = 0x7C // BeiDou MSM4
 	ubxRtcm1230    = 0xE6 // GLONASS code-phase biases, set to once every 10 seconds
-	i2cport        = 0
 	uart2          = 2
 	usb            = 3
 	ubxRtcmMsb     = 0xF5
@@ -62,7 +60,6 @@ var nmeaMsgs = map[int]int{
 type configCommand struct {
 	correctionType string
 	portName       string
-	i2cbus         *i2c.I2C
 	baudRate       uint
 	surveyIn       string
 

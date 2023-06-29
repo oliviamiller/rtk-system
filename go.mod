@@ -3,7 +3,6 @@ module rtkstation
 go 1.18
 
 require (
-	github.com/d2r2/go-i2c v0.0.0-20191123181816-73a8a799d6bc
 	github.com/edaniels/golog v0.0.0-20230215213219-28954395e8d0
 	github.com/go-gnss/rtcm v0.0.6
 	github.com/golang/geo v0.0.0-20210211234256-740aa86cb551
@@ -32,7 +31,6 @@ require (
 	github.com/campoy/embedmd v1.0.0 // indirect
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/cenkalti/backoff/v4 v4.2.1 // indirect
-	github.com/d2r2/go-logger v0.0.0-20210606094344-60e9d1233e22 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.2.0 // indirect
 	github.com/desertbit/timer v0.0.0-20180107155436-c41aec40b27f // indirect
