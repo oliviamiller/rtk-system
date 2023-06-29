@@ -203,14 +203,6 @@ func newRTKStation(
 
 		r.logger.Debug("Init serial writer")
 		r.serialWriter = io.Writer(port)
-	case i2cStr:
-		r.i2cPath.addr = byte(newConf.I2CAddr)
-		r.i2cPath.bus = newConf.I2CBus
-		var err error
-		r.correctionSource, err = newI2CCorrectionSource(deps, newConf, logger)
-		if err != nil {
-			return nil, err
-		}
 	default:
 		// Invalid protocol
 		return nil, fmt.Errorf("%s is not a valid correction source protocol", r.protocol)
