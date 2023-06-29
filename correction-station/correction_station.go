@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"sync"
 
 	"github.com/edaniels/golog"
@@ -142,7 +141,6 @@ type rtkStation struct {
 }
 
 type correctionSource interface {
-	Reader() (io.ReadCloser, error)
 	Start(ready chan<- bool)
 	Close(ctx context.Context) error
 }
@@ -159,8 +157,6 @@ func newRTKStation(
 	newConf *Config,
 	logger golog.Logger,
 ) (sensor.Sensor, error) {
-
-	log.Println("HERE!!!!!")
 
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
 
@@ -208,10 +204,8 @@ func newRTKStation(
 		r.logger.Debug("Init serial writer")
 		r.serialWriter = io.Writer(port)
 	case i2cStr:
-		log.Println("i2c")
 		r.i2cPath.addr = byte(newConf.I2CAddr)
 		r.i2cPath.bus = newConf.I2CBus
-		log.Println(r.i2cPath)
 		var err error
 		r.correctionSource, err = newI2CCorrectionSource(deps, newConf, logger)
 		if err != nil {
@@ -230,7 +224,6 @@ func newRTKStation(
 
 // Start starts reading from the correction source and sends corrections to the radio/bluetooth.
 func (r *rtkStation) start(ctx context.Context) {
-	log.Println("starting!!!!")
 	r.activeBackgroundWorkers.Add(1)
 	utils.PanicCapturingGo(func() {
 		defer r.activeBackgroundWorkers.Done()
@@ -239,73 +232,13 @@ func (r *rtkStation) start(ctx context.Context) {
 			return
 		}
 
-		// read from correction source
+		// Start the correction source
 		ready := make(chan bool)
 		r.correctionSource.Start(ready)
-
 		select {
 		case <-ready:
 		case <-r.cancelCtx.Done():
 			return
-		}
-		stream, err := r.correctionSource.Reader()
-		if err != nil {
-			r.logger.Errorf("Unable to get reader: %s", err)
-			r.err.Set(err)
-			return
-		}
-		var reader io.Reader
-		if r.protocol == serialStr {
-			// reader will write stream to the serial port
-			reader = io.TeeReader(stream, r.serialWriter)
-		}
-
-		// write corrections to the serial port/i2c handle
-		for {
-			select {
-			case <-r.cancelCtx.Done():
-				return
-			default:
-			}
-			buf := make([]byte, 1100)
-			switch r.protocol {
-			case serialStr:
-				n, err := reader.Read(buf)
-				r.logger.Debugf("Reading %d bytes", n)
-				if err != nil {
-					if err.Error() == "io: read/write on closed pipe" {
-						r.logger.Debug("Pipe closed")
-						return
-					}
-					r.logger.Errorf("Unable to read stream: %s", err)
-					r.err.Set(err)
-					return
-				}
-				/* case i2cStr:
-				// write buf to the i2c handle
-				// open handle
-				log.Println(r.i2cPath)
-				i2cBus, err := i2c.NewI2C(r.i2cPath.addr, r.i2cPath.bus)
-				if err != nil {
-					r.logger.Errorf("can't open movementsensor i2c handle: %s", err)
-					r.err.Set(err)
-					return
-				}
-				// write to i2c handle
-				_, err = i2cBus.WriteBytes(buf)
-				if err != nil {
-					r.logger.Errorf("i2c handle write failed %s", err)
-					r.err.Set(err)
-					return
-				}
-				// close i2c handle
-				err = i2cBus.Close()
-				if err != nil {
-					r.logger.Errorf("failed to close handle: %s", err)
-					r.err.Set(err)
-					return
-				} */
-			}
 		}
 	})
 }
@@ -321,10 +254,12 @@ func (r *rtkStation) Close(ctx context.Context) error {
 		return err
 	}
 
-	// close the serial port
-	err = r.serialWriter.(io.ReadWriteCloser).Close()
-	if err != nil {
-		return err
+	if r.protocol == serialStr {
+		// close the serial port
+		err = r.serialWriter.(io.ReadWriteCloser).Close()
+		if err != nil {
+			return err
+		}
 	}
 
 	if err := r.err.Get(); err != nil && !errors.Is(err, context.Canceled) {
