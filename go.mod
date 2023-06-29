@@ -5,9 +5,12 @@ go 1.18
 require (
 	github.com/d2r2/go-i2c v0.0.0-20191123181816-73a8a799d6bc
 	github.com/d2r2/go-logger v0.0.0-20210606094344-60e9d1233e22
+	github.com/de-bkg/gognss v0.0.0-20220601150219-24ccfdcdbb5d
 	github.com/edaniels/golog v0.0.0-20230215213219-28954395e8d0
 	github.com/go-gnss/rtcm v0.0.6
+	github.com/golang/geo v0.0.0-20210211234256-740aa86cb551
 	github.com/jacobsa/go-serial v0.0.0-20180131005756-15cf729a72d4
+	github.com/kellydunn/golang-geo v0.7.0
 	github.com/pkg/errors v0.9.1
 	go.viam.com/rdk v0.2.50
 	go.viam.com/utils v0.1.36
@@ -21,7 +24,9 @@ require (
 	cloud.google.com/go/storage v1.30.1 // indirect
 	git.sr.ht/~sbinet/gg v0.3.1 // indirect
 	github.com/a8m/envsubst v1.4.2 // indirect
+	github.com/adrianmo/go-nmea v1.7.0 // indirect
 	github.com/ajstarks/svgo v0.0.0-20211024235047-1546f124cd8b // indirect
+	github.com/alecthomas/participle/v2 v2.0.0-alpha3 // indirect
 	github.com/bamiaux/iobit v0.0.0-20170418073505-498159a04883 // indirect
 	github.com/benbjohnson/clock v1.3.3 // indirect
 	github.com/bep/debounce v1.2.1 // indirect
@@ -35,6 +40,7 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/edaniels/lidario v0.0.0-20220607182921-5879aa7b96dd // indirect
 	github.com/edaniels/zeroconf v1.0.10 // indirect
+	github.com/erh/scheme v0.0.0-20210304170849-99d295c6ce9a // indirect
 	github.com/erikstmartin/go-testdb v0.0.0-20160219214506-8d10e4a1bae5 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/fullstorydev/grpcurl v1.8.6 // indirect
@@ -42,12 +48,10 @@ require (
 	github.com/go-gl/mathgl v1.0.0 // indirect
 	github.com/go-latex/latex v0.0.0-20230307184459-12ec69307ad9 // indirect
 	github.com/go-pdf/fpdf v0.6.0 // indirect
-	github.com/go-playground/validator/v10 v10.11.0 // indirect
 	github.com/go-restruct/restruct v1.2.0-alpha.0.20210525045353-983b86fa188e // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.0 // indirect
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
-	github.com/golang/geo v0.0.0-20210211234256-740aa86cb551 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
@@ -62,7 +66,6 @@ require (
 	github.com/improbable-eng/grpc-web v0.15.0 // indirect
 	github.com/jedib0t/go-pretty/v6 v6.4.6 // indirect
 	github.com/jhump/protoreflect v1.15.1 // indirect
-	github.com/kellydunn/golang-geo v0.7.0 // indirect
 	github.com/klauspost/compress v1.16.5 // indirect
 	github.com/kr/pretty v0.3.0 // indirect
 	github.com/kylelemons/go-gypsy v1.0.0 // indirect
