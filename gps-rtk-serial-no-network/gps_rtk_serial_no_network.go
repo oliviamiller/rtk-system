@@ -341,7 +341,7 @@ func (g *rtkSerialNoNetwork) ReadFix(ctx context.Context) (int, error) {
 }
 
 // Properties passthrough.
-func (g rtkSerialNoNetwork) Properties(ctx context.Context, extra map[string]interface{}) (*movementsensor.Properties, error) {
+func (g *rtkSerialNoNetwork) Properties(ctx context.Context, extra map[string]interface{}) (*movementsensor.Properties, error) {
 	lastError := g.err.Get()
 	if lastError != nil {
 		return &movementsensor.Properties{}, lastError
