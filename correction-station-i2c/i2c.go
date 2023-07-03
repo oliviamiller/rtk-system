@@ -1,11 +1,10 @@
-package station
+package stationi2c
 
 import (
 	"context"
 	"errors"
 	"io"
 	"sync"
-	"time"
 
 	i2c "github.com/d2r2/go-i2c"
 	"github.com/d2r2/go-logger"
@@ -75,7 +74,7 @@ func (s *i2cCorrectionSource) Start(ready chan<- bool) {
 		case <-s.cancelCtx.Done():
 			return
 		}
-		// read from handle
+		// create i2c bus
 		i2cBus, err := i2c.NewI2C(s.addr, s.bus)
 		s.err.Set(err)
 
@@ -102,8 +101,6 @@ func (s *i2cCorrectionSource) Start(ready chan<- bool) {
 				return
 			default:
 			}
-			//get the rctm messages every 10 secs
-			time.Sleep(10 * time.Second)
 			// Open I2C handle every time
 			i2cBus, err := i2c.NewI2C(s.addr, s.bus)
 			s.err.Set(err)

@@ -1,4 +1,4 @@
-package station
+package stationserial
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 	"github.com/edaniels/golog"
 	"github.com/go-gnss/rtcm/rtcm3"
 	"github.com/jacobsa/go-serial/serial"
-	"github.com/pkg/errors"
 	"go.viam.com/utils"
 
 	"go.viam.com/rdk/components/movementsensor"
@@ -22,9 +21,6 @@ type serialCorrectionSource struct {
 	cancelCtx               context.Context
 	cancelFunc              func()
 	activeBackgroundWorkers sync.WaitGroup
-
-	correctionReaderMu sync.Mutex
-	correctionReader   io.ReadCloser // reader for rctm corrections only
 
 	err movementsensor.LastError
 
@@ -82,8 +78,8 @@ func newSerialCorrectionSource(conf *Config, logger golog.Logger) (correctionSou
 		s.logger.Info("Using default baud rate 38400")
 	}
 
-	if conf.SerialConfig.TestChan != nil {
-		s.TestChan = conf.SerialConfig.TestChan
+	if conf.TestChan != nil {
+		s.TestChan = conf.TestChan
 	} else {
 		options := serial.OpenOptions{
 			PortName:        serialPath,
@@ -112,34 +108,18 @@ func (s *serialCorrectionSource) Start(ready chan<- bool) {
 		if err := s.cancelCtx.Err(); err != nil {
 			return
 		}
-
-		var w io.WriteCloser
-		pr, pw := io.Pipe()
-		s.correctionReaderMu.Lock()
-		if err := s.cancelCtx.Err(); err != nil {
-			return
-		}
-		s.correctionReader = pipeReader{pr: pr}
-		s.correctionReaderMu.Unlock()
-		w = pipeWriter{pw: pw}
 		select {
 		case ready <- true:
 		case <-s.cancelCtx.Done():
 			return
 		}
 
-		// read from s.port and write rctm messages into w, discard other messages in loop
+		// Read the rctm messages just to make sure that they are coming in, return if not.
 		scanner := rtcm3.NewScanner(s.port)
 
 		for {
 			select {
 			case <-s.cancelCtx.Done():
-				err := w.Close()
-				if err != nil {
-					s.logger.Errorf("Unable to close writer: %s", err)
-					s.err.Set(err)
-					return
-				}
 				return
 			default:
 			}
@@ -154,52 +134,23 @@ func (s *serialCorrectionSource) Start(ready chan<- bool) {
 			case rtcm3.MessageUnknown:
 				continue
 			default:
-				frame := rtcm3.EncapsulateMessage(msg)
-				byteMsg := frame.Serialize()
-				_, err := w.Write(byteMsg)
-				if err != nil {
-					s.logger.Errorf("Error writing RTCM message: %s", err)
-					s.err.Set(err)
-					return
-				}
 			}
 		}
 	})
 }
 
-// Reader returns the serialCorrectionSource's correctionReader if it exists.
-func (s *serialCorrectionSource) Reader() (io.ReadCloser, error) {
-	if s.correctionReader == nil {
-		return nil, errors.New("no stream")
-	}
-
-	return s.correctionReader, s.err.Get()
-}
-
 // Close shuts down the serialCorrectionSource and closes s.port.
 func (s *serialCorrectionSource) Close(ctx context.Context) error {
-	s.correctionReaderMu.Lock()
 	s.cancelFunc()
 
 	// close port reader
 	if s.port != nil {
 		if err := s.port.Close(); err != nil {
-			s.correctionReaderMu.Unlock()
 			return err
 		}
 		s.port = nil
 	}
 
-	// close correction reader
-	if s.correctionReader != nil {
-		if err := s.correctionReader.Close(); err != nil {
-			s.correctionReaderMu.Unlock()
-			return err
-		}
-		s.correctionReader = nil
-	}
-
-	s.correctionReaderMu.Unlock()
 	s.activeBackgroundWorkers.Wait()
 
 	return s.err.Get()

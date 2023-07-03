@@ -1,4 +1,4 @@
-package station
+package stationi2c
 
 //TODO: RSDK-3754 fix the tests
 /*const (

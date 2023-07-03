@@ -1,12 +1,10 @@
-package station
+package stationserial
 
 import (
 	"context"
 	"fmt"
 	"io"
 
-	i2c "github.com/d2r2/go-i2c"
-	"github.com/d2r2/go-logger"
 	"github.com/jacobsa/go-serial/serial"
 	"github.com/pkg/errors"
 )
@@ -20,7 +18,6 @@ const (
 	ubxRtcm1094    = 0x5E // Galileo MSM4
 	ubxRtcm1124    = 0x7C // BeiDou MSM4
 	ubxRtcm1230    = 0xE6 // GLONASS code-phase biases, set to once every 10 seconds
-	i2cport        = 0
 	uart2          = 2
 	usb            = 3
 	ubxRtcmMsb     = 0xF5
@@ -63,7 +60,6 @@ var nmeaMsgs = map[int]int{
 type configCommand struct {
 	correctionType string
 	portName       string
-	i2cbus         *i2c.I2C
 	baudRate       uint
 	surveyIn       string
 
@@ -80,9 +76,9 @@ type configCommand struct {
 // ConfigureBaseRTKStation configures an RTK chip to act as a base station and send correction data.
 func ConfigureBaseRTKStation(newConf *Config) error {
 
-	correctionType := newConf.Protocol
 	requiredAcc := newConf.RequiredAccuracy
 	observationTime := newConf.RequiredTime
+	correctionType := "serial"
 
 	c := &configCommand{
 		surveyIn:        timeMode,
@@ -93,26 +89,16 @@ func ConfigureBaseRTKStation(newConf *Config) error {
 		msgsToDisable:   nmeaMsgs, // defaults
 	}
 
-	switch c.correctionType {
-	case serialStr:
-		err := c.serialConfigure(newConf)
-		if err != nil {
-			return err
-		}
-	case i2cStr:
-		err := c.i2cConfigure(newConf)
-		if err != nil {
-			return err
-		}
-	default:
-		return errors.Errorf("configuration not supported for %s", correctionType)
+	err := c.serialConfigure(newConf)
+	if err != nil {
+		return err
 	}
 
 	if err := c.enableAll(ubxRtcmMsb); err != nil {
 		return err
 	}
 
-	err := c.disableAll(ubxNmeaMsb)
+	err = c.disableAll(ubxNmeaMsb)
 	if err != nil {
 		return err
 	}
@@ -127,15 +113,15 @@ func ConfigureBaseRTKStation(newConf *Config) error {
 
 func (c *configCommand) serialConfigure(newConf *Config) error {
 
-	portName := newConf.SerialConfig.SerialPath
+	portName := newConf.SerialPath
 	if portName == "" {
 		return fmt.Errorf("serialCorrectionSource expected non-empty string for %q", correctionPathName)
 	}
 	c.portName = portName
 
-	baudRate := newConf.SerialConfig.SerialBaudRate
+	baudRate := newConf.SerialBaudRate
 	if baudRate == 0 {
-		baudRate = 9600
+		baudRate = 38400
 	}
 	c.baudRate = uint(baudRate)
 	c.portID = uart2
@@ -158,41 +144,7 @@ func (c *configCommand) serialConfigure(newConf *Config) error {
 	return nil
 }
 
-func (c *configCommand) i2cConfigure(newConf *Config) error {
-
-	baudRate := newConf.I2CConfig.I2CBaudRate
-	if baudRate == 0 {
-		baudRate = 9600
-	}
-	c.baudRate = uint(baudRate)
-	c.portID = i2cport
-
-	i2cBus, err := i2c.NewI2C(uint8(newConf.I2CAddr), newConf.I2CBus)
-	if err != nil {
-		return fmt.Errorf("gps init: failed to find i2c bus %d", newConf.I2CBus)
-	}
-
-	logger.ChangePackageLogLevel("i2c", logger.InfoLevel)
-
-	c.i2cbus = i2cBus
-
-	return nil
-}
-
 func (c *configCommand) sendCommand(cls, id, msgLen int, payloadCfg []byte) error {
-	switch c.correctionType {
-	case serialStr:
-		_, err := c.sendCommandSerial(cls, id, msgLen, payloadCfg)
-		return err
-	case i2cStr:
-		_, err := c.sendCommandi2c(cls, id, msgLen, payloadCfg)
-		return err
-	default:
-		return errors.Errorf("configuration not supported for %s", c.correctionType)
-	}
-}
-
-func (c *configCommand) sendCommandSerial(cls, id, msgLen int, payloadCfg []byte) ([]byte, error) {
 	checksumA, checksumB := calcChecksum(cls, id, msgLen, payloadCfg)
 
 	// build packet to send over serial
@@ -216,53 +168,16 @@ func (c *configCommand) sendCommandSerial(cls, id, msgLen int, payloadCfg []byte
 
 	_, err := c.writePort.Write(packet)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// then wait to capture a byte
 	buf := make([]byte, maxPayloadSize)
-	n, err := c.writePort.Read(buf)
+	_, err = c.writePort.Read(buf)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return buf[:n], nil
-}
-
-func (c *configCommand) sendCommandi2c(cls, id, msgLen int, payloadCfg []byte) ([]byte, error) {
-	checksumA, checksumB := calcChecksum(cls, id, msgLen, payloadCfg)
-
-	// build packet to send over serial
-	byteSize := msgLen + 8 // header+checksum+payload
-	packet := make([]byte, byteSize)
-
-	// header bytes
-	packet[0] = byte(ubxSynch1)
-	packet[1] = byte(ubxSynch2)
-	packet[2] = byte(cls)
-	packet[3] = byte(id)
-	packet[4] = byte(msgLen & 0xFF) // LSB
-	packet[5] = byte(msgLen >> 8)   // MSB
-
-	ind := 6
-	for i := 0; i < msgLen; i++ {
-		packet[ind+i] = payloadCfg[i]
-	}
-	packet[len(packet)-1] = byte(checksumB)
-	packet[len(packet)-2] = byte(checksumA)
-
-	_, err := c.i2cbus.WriteBytes(packet)
-
-	if err != nil {
-		return nil, err
-	}
-
-	// then wait to capture a byte
-	buf := make([]byte, maxPayloadSize)
-	n, err := c.i2cbus.ReadBytes(buf)
-	if err != nil {
-		return nil, err
-	}
-	return buf[:n], nil
+	return nil
 }
 
 func (c *configCommand) disableAll(msb int) error {

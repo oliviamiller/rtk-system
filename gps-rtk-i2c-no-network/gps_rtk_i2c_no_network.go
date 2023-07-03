@@ -1,24 +1,21 @@
-package gpsrtk
+package gpsrtki2c
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"math"
 	"sync"
 
-	"github.com/de-bkg/gognss/pkg/ntrip"
+	"github.com/d2r2/go-i2c"
+	"github.com/d2r2/go-logger"
 	"github.com/edaniels/golog"
-	"github.com/go-gnss/rtcm/rtcm3"
 	"github.com/golang/geo/r3"
-	slib "github.com/jacobsa/go-serial/serial"
 	geo "github.com/kellydunn/golang-geo"
 	"go.viam.com/utils"
 
-	"go.viam.com/rdk/components/board"
+	nmea "rtksystem/gps-nmea"
+
 	"go.viam.com/rdk/components/movementsensor"
 	gpsnmea "go.viam.com/rdk/components/movementsensor/gpsnmea"
 	"go.viam.com/rdk/resource"
@@ -82,25 +79,22 @@ type RTKI2CNoNetwork struct {
 	Nmeamovementsensor gpsnmea.NmeaMovementSensor
 	CorrectionWriter   io.ReadWriteCloser
 
-	Bus   int
-	Wbaud int
-	Addr  byte
+	bus   int
+	wbaud int
+	addr  byte
 }
 
 func newRTKI2CNoNetwork(
 	ctx context.Context,
 	deps resource.Dependencies,
-	conf resource.Config,
+	name resource.Name,
+	newConf *Config,
 	logger golog.Logger,
 ) (movementsensor.MovementSensor, error) {
-	newConf, err := resource.NativeConfig[*Config](conf)
-	if err != nil {
-		return nil, err
-	}
 
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
 	g := &RTKI2CNoNetwork{
-		Named:        conf.ResourceName().AsNamed(),
+		Named:        name.AsNamed(),
 		cancelCtx:    cancelCtx,
 		cancelFunc:   cancelFunc,
 		logger:       logger,
@@ -108,38 +102,21 @@ func newRTKI2CNoNetwork(
 		lastposition: movementsensor.NewLastPosition(),
 	}
 
+	if newConf.I2CBaudRate == 0 {
+		newConf.I2CBaudRate = 38400
+		g.logger.Info("using default baud rate 38400")
+	}
+
 	// Init NMEAMovementSensor
 	var err error
-	nmeaConf.Board = newConf.I2CConfig.Board
-	nmeaConf.I2CConfig = &gpsnmea.I2CConfig{I2CBus: newConf.I2CBus, I2CBaudRate: newConf.I2CBaudRate, I2cAddr: newConf.I2cAddr}
-	g.Nmeamovementsensor, err = gpsnmea.NewPmtkI2CGPSNMEA(ctx, deps, conf.ResourceName(), nmeaConf, logger)
+	nmeaConf := (*nmea.Config)(newConf)
+	g.Nmeamovementsensor, err = nmea.NewNMEAGPS(ctx, deps, name, nmeaConf, logger)
 	if err != nil {
 		return nil, err
 	}
-
-	// baud rate
-	if newConf.NtripBaud == 0 {
-		newConf.NtripBaud = 38400
-		g.logger.Info("ntrip_baud using default baud rate 38400")
-	}
-	g.Wbaud = newConf.NtripBaud
-
-	g.Addr = byte(newConf.I2cAddr)
-
-	b, err := board.FromDependencies(deps, newConf.Board)
-	if err != nil {
-		return nil, fmt.Errorf("gps init: failed to find board: %w", err)
-	}
-	localB, ok := b.(board.LocalBoard)
-	if !ok {
-		return nil, fmt.Errorf("board %s is not local", newConf.Board)
-	}
-
-	i2cbus, ok := localB.I2CByName(newConf.I2CBus)
-	if !ok {
-		return nil, fmt.Errorf("gps init: failed to find i2c bus %s", newConf.I2CBus)
-	}
-	g.Bus = i2cbus
+	g.wbaud = newConf.I2CBaudRate
+	g.addr = byte(newConf.I2cAddr)
+	g.bus = newConf.I2CBus
 
 	if err := g.start(); err != nil {
 		return nil, err
@@ -147,7 +124,7 @@ func newRTKI2CNoNetwork(
 	return g, g.err.Get()
 }
 
-// Start begins NTRIP receiver with specified protocol and begins reading/updating MovementSensor measurements.
+// Start begins the background task to recieve and write I2C.
 func (g *RTKI2CNoNetwork) start() error {
 	// TODO(RDK-1639): Test out what happens if we call this line and then the ReceiveAndWrite*
 	// correction data goes wrong. Could anything worse than uncorrected data occur?
@@ -156,347 +133,79 @@ func (g *RTKI2CNoNetwork) start() error {
 		return err
 	}
 
-	switch g.InputProtocol {
-	case serialStr:
-		g.activeBackgroundWorkers.Add(1)
-		utils.PanicCapturingGo(g.receiveAndWriteSerial)
-	case i2cStr:
-		g.activeBackgroundWorkers.Add(1)
-		utils.PanicCapturingGo(func() { g.receiveAndWriteI2C(g.cancelCtx) })
-	}
+	g.activeBackgroundWorkers.Add(1)
+	utils.PanicCapturingGo(func() { g.receiveAndWriteI2C(g.cancelCtx) })
 
-	return g.err.Get()
-}
-
-// Connect attempts to connect to ntrip client until successful connection or timeout.
-func (g *RTKI2CNoNetwork) Connect(casterAddr, user, pwd string, maxAttempts int) error {
-	attempts := 0
-
-	var c *ntrip.Client
-	var err error
-
-	g.logger.Debug("Connecting to NTRIP caster")
-	for attempts < maxAttempts {
-		select {
-		case <-g.cancelCtx.Done():
-			return g.cancelCtx.Err()
-		default:
-		}
-
-		c, err = ntrip.NewClient(casterAddr, ntrip.Options{Username: user, Password: pwd})
-		if err == nil {
-			break
-		}
-
-		attempts++
-	}
-
-	if err != nil {
-		g.logger.Errorf("Can't connect to NTRIP caster: %s", err)
-		return err
-	}
-
-	g.logger.Debug("Connected to NTRIP caster")
-	g.ntripMu.Lock()
-	g.ntripClient.Client = c
-	g.ntripMu.Unlock()
-	return g.err.Get()
-}
-
-// GetStream attempts to connect to ntrip streak until successful connection or timeout.
-func (g *RTKI2CNoNetwork) GetStream(mountPoint string, maxAttempts int) error {
-	success := false
-	attempts := 0
-
-	var rc io.ReadCloser
-	var err error
-
-	g.logger.Debug("Getting NTRIP stream")
-
-	for !success && attempts < maxAttempts {
-		select {
-		case <-g.cancelCtx.Done():
-			return errors.New("Canceled")
-		default:
-		}
-
-		rc, err = func() (io.ReadCloser, error) {
-			g.ntripMu.Lock()
-			defer g.ntripMu.Unlock()
-			return g.ntripClient.Client.GetStream(mountPoint)
-		}()
-		if err == nil {
-			success = true
-		}
-		attempts++
-	}
-
-	if err != nil {
-		g.logger.Errorf("Can't connect to NTRIP stream: %s", err)
-		return err
-	}
-
-	g.logger.Debug("Connected to stream")
-	g.ntripMu.Lock()
-	defer g.ntripMu.Unlock()
-
-	g.ntripClient.Stream = rc
 	return g.err.Get()
 }
 
 // receiveAndWriteI2C connects to NTRIP receiver and sends correction stream to the MovementSensor through I2C protocol.
 func (g *RTKI2CNoNetwork) receiveAndWriteI2C(ctx context.Context) {
+
 	defer g.activeBackgroundWorkers.Done()
 	if err := g.cancelCtx.Err(); err != nil {
 		return
 	}
-	err := g.Connect(g.ntripClient.URL, g.ntripClient.Username, g.ntripClient.Password, g.ntripClient.MaxConnectAttempts)
+
+	// create i2c bus
+	i2cBus, err := i2c.NewI2C(g.addr, g.bus)
+	g.err.Set(err)
+
+	// change so you don't see a million logs
+	logger.ChangePackageLogLevel("i2c", logger.InfoLevel)
+
+	buf := make([]byte, 1024)
+	_, err = i2cBus.ReadBytes(buf)
 	if err != nil {
-		g.err.Set(err)
-		return
+		g.logger.Debug("Could not read from handle")
 	}
 
-	if !g.ntripClient.Client.IsCasterAlive() {
-		g.logger.Infof("caster %s seems to be down", g.ntripClient.URL)
-	}
-
-	// establish I2C connection
-	handle, err := g.Bus.OpenHandle(g.Addr)
+	// close I2C handle
+	err = i2cBus.Close()
+	g.err.Set(err)
 	if err != nil {
-		g.logger.Errorf("can't open gps i2c %s", err)
-		g.err.Set(err)
-		return
-	}
-	// Send GLL, RMC, VTG, GGA, GSA, and GSV sentences each 1000ms
-	baudcmd := fmt.Sprintf("PMTK251,%d", g.Wbaud)
-	cmd251 := addChk([]byte(baudcmd))
-	cmd314 := addChk([]byte("PMTK314,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0"))
-	cmd220 := addChk([]byte("PMTK220,1000"))
-
-	err = handle.Write(ctx, cmd251)
-	if err != nil {
-		g.logger.Debug("Failed to set baud rate")
-	}
-	err = handle.Write(ctx, cmd314)
-	if err != nil {
-		g.logger.Debug("failed to set NMEA output")
-		g.err.Set(err)
-		return
-	}
-	err = handle.Write(ctx, cmd220)
-	if err != nil {
-		g.logger.Debug("failed to set NMEA update rate")
-		g.err.Set(err)
+		g.logger.Debug("failed to close i2c handle: %s", err)
 		return
 	}
 
-	err = g.GetStream(g.ntripClient.MountPoint, g.ntripClient.MaxConnectAttempts)
-	if err != nil {
-		g.err.Set(err)
-		return
-	}
-
-	// create a buffer
-	w := &bytes.Buffer{}
-	r := io.TeeReader(g.ntripClient.Stream, w)
-
-	buf := make([]byte, 1100)
-	n, err := g.ntripClient.Stream.Read(buf)
-	if err != nil {
-		g.err.Set(err)
-		return
-	}
-	wI2C := addChk(buf[:n])
-
-	// port still open
-	err = handle.Write(ctx, wI2C)
-	if err != nil {
-		g.logger.Errorf("i2c handle write failed %s", err)
-		g.err.Set(err)
-		return
-	}
-
-	scanner := rtcm3.NewScanner(r)
-
-	g.ntripMu.Lock()
-	g.ntripStatus = true
-	g.ntripMu.Unlock()
-
-	// It's okay to skip the mutex on this next line: g.ntripStatus can only be mutated by this
-	// goroutine itself.
-	for g.ntripStatus {
-		select {
-		case <-g.cancelCtx.Done():
-			g.err.Set(err)
-			return
-		default:
-		}
-
-		// establish I2C connection
-		handle, err := g.Bus.OpenHandle(g.Addr)
-		if err != nil {
-			g.logger.Errorf("can't open gps i2c %s", err)
-			g.err.Set(err)
-			return
-		}
-
-		msg, err := scanner.NextMessage()
-		if err != nil {
-			g.ntripMu.Lock()
-			g.ntripStatus = false
-			g.ntripMu.Unlock()
-
-			if msg == nil {
-				g.logger.Debug("No message... reconnecting to stream...")
-				err = g.GetStream(g.ntripClient.MountPoint, g.ntripClient.MaxConnectAttempts)
-				if err != nil {
-					g.err.Set(err)
-					return
-				}
-
-				w = &bytes.Buffer{}
-				r = io.TeeReader(g.ntripClient.Stream, w)
-
-				buf = make([]byte, 1100)
-				n, err := g.ntripClient.Stream.Read(buf)
-				if err != nil {
-					g.err.Set(err)
-					return
-				}
-				wI2C := addChk(buf[:n])
-
-				err = handle.Write(ctx, wI2C)
-
-				if err != nil {
-					g.logger.Errorf("i2c handle write failed %s", err)
-					g.err.Set(err)
-					return
-				}
-
-				scanner = rtcm3.NewScanner(r)
-				g.ntripMu.Lock()
-				g.ntripStatus = true
-				g.ntripMu.Unlock()
-				continue
-			}
-		}
-		// close I2C
-		err = handle.Close()
-		if err != nil {
-			g.logger.Debug("failed to close handle: %s", err)
-			g.err.Set(err)
-			return
-		}
-	}
-}
-
-// receiveAndWriteSerial connects to NTRIP receiver and sends correction stream to the MovementSensor through serial.
-func (g *RTKI2CNoNetwork) receiveAndWriteSerial() {
-	defer g.activeBackgroundWorkers.Done()
-	if err := g.cancelCtx.Err(); err != nil {
-		return
-	}
-	err := g.Connect(g.ntripClient.URL, g.ntripClient.Username, g.ntripClient.Password, g.ntripClient.MaxConnectAttempts)
-	if err != nil {
-		g.err.Set(err)
-		return
-	}
-
-	if !g.ntripClient.Client.IsCasterAlive() {
-		g.logger.Infof("caster %s seems to be down", g.ntripClient.URL)
-	}
-
-	options := slib.OpenOptions{
-		PortName:        g.Writepath,
-		BaudRate:        uint(g.Wbaud),
-		DataBits:        8,
-		StopBits:        1,
-		MinimumReadSize: 1,
-	}
-
-	// Open the port.
-	g.ntripMu.Lock()
-	if err := g.cancelCtx.Err(); err != nil {
-		g.ntripMu.Unlock()
-		return
-	}
-	g.CorrectionWriter, err = slib.Open(options)
-	g.ntripMu.Unlock()
-	if err != nil {
-		g.logger.Errorf("serial.Open: %v", err)
-		g.err.Set(err)
-		return
-	}
-
-	w := bufio.NewWriter(g.CorrectionWriter)
-
-	err = g.GetStream(g.ntripClient.MountPoint, g.ntripClient.MaxConnectAttempts)
-	if err != nil {
-		g.err.Set(err)
-		return
-	}
-
-	r := io.TeeReader(g.ntripClient.Stream, w)
-	scanner := rtcm3.NewScanner(r)
-
-	g.ntripMu.Lock()
-	g.ntripStatus = true
-	g.ntripMu.Unlock()
-
-	// It's okay to skip the mutex on this next line: g.ntripStatus can only be mutated by this
-	// goroutine itself.
-	for g.ntripStatus {
+	for err == nil {
 		select {
 		case <-g.cancelCtx.Done():
 			return
 		default:
 		}
+		// Open I2C handle every time
+		i2cBus, err := i2c.NewI2C(g.addr, g.bus)
+		g.err.Set(err)
 
-		msg, err := scanner.NextMessage()
+		_, err = i2cBus.ReadBytes(buf)
+		g.err.Set(err)
 		if err != nil {
-			g.ntripMu.Lock()
-			g.ntripStatus = false
-			g.ntripMu.Unlock()
-
-			if msg == nil {
-				g.logger.Debug("No message... reconnecting to stream...")
-				err = g.GetStream(g.ntripClient.MountPoint, g.ntripClient.MaxConnectAttempts)
-				if err != nil {
-					g.err.Set(err)
-					return
-				}
-
-				r = io.TeeReader(g.ntripClient.Stream, w)
-				scanner = rtcm3.NewScanner(r)
-				g.ntripMu.Lock()
-				g.ntripStatus = true
-				g.ntripMu.Unlock()
-				continue
-			}
+			g.logger.Errorf("can't open gps i2c handle: %s", err)
+			return
 		}
-	}
-}
 
-// NtripStatus returns true if connection to NTRIP stream is OK, false if not.
-func (g *RTKI2CNoNetwork) NtripStatus() (bool, error) {
-	g.ntripMu.Lock()
-	defer g.ntripMu.Unlock()
-	return g.ntripStatus, g.err.Get()
+		// close I2C handle
+		err = i2cBus.Close()
+		g.err.Set(err)
+		if err != nil {
+			g.logger.Debug("failed to close i2c handle: %s", err)
+			return
+		}
+
+	}
 }
 
 // Position returns the current geographic location of the MOVEMENTSENSOR.
 func (g *RTKI2CNoNetwork) Position(ctx context.Context, extra map[string]interface{}) (*geo.Point, float64, error) {
-	g.ntripMu.Lock()
 	lastError := g.err.Get()
 	if lastError != nil {
 		lastPosition := g.lastposition.GetLastPosition()
-		g.ntripMu.Unlock()
 		if lastPosition != nil {
 			return lastPosition, 0, nil
 		}
 		return geo.NewPoint(math.NaN(), math.NaN()), math.NaN(), lastError
 	}
-	g.ntripMu.Unlock()
 
 	position, alt, err := g.Nmeamovementsensor.Position(ctx, extra)
 	if err != nil {
@@ -526,13 +235,10 @@ func (g *RTKI2CNoNetwork) Position(ctx context.Context, extra map[string]interfa
 
 // LinearVelocity passthrough.
 func (g *RTKI2CNoNetwork) LinearVelocity(ctx context.Context, extra map[string]interface{}) (r3.Vector, error) {
-	g.ntripMu.Lock()
 	lastError := g.err.Get()
 	if lastError != nil {
-		defer g.ntripMu.Unlock()
 		return r3.Vector{}, lastError
 	}
-	g.ntripMu.Unlock()
 
 	return g.Nmeamovementsensor.LinearVelocity(ctx, extra)
 }
@@ -548,52 +254,40 @@ func (g *RTKI2CNoNetwork) LinearAcceleration(ctx context.Context, extra map[stri
 
 // AngularVelocity passthrough.
 func (g *RTKI2CNoNetwork) AngularVelocity(ctx context.Context, extra map[string]interface{}) (spatialmath.AngularVelocity, error) {
-	g.ntripMu.Lock()
 	lastError := g.err.Get()
 	if lastError != nil {
-		defer g.ntripMu.Unlock()
 		return spatialmath.AngularVelocity{}, lastError
 	}
-	g.ntripMu.Unlock()
 
 	return g.Nmeamovementsensor.AngularVelocity(ctx, extra)
 }
 
 // CompassHeading passthrough.
 func (g *RTKI2CNoNetwork) CompassHeading(ctx context.Context, extra map[string]interface{}) (float64, error) {
-	g.ntripMu.Lock()
 	lastError := g.err.Get()
 	if lastError != nil {
-		defer g.ntripMu.Unlock()
 		return 0, lastError
 	}
-	g.ntripMu.Unlock()
 
 	return g.Nmeamovementsensor.CompassHeading(ctx, extra)
 }
 
 // Orientation passthrough.
 func (g *RTKI2CNoNetwork) Orientation(ctx context.Context, extra map[string]interface{}) (spatialmath.Orientation, error) {
-	g.ntripMu.Lock()
 	lastError := g.err.Get()
 	if lastError != nil {
-		defer g.ntripMu.Unlock()
 		return spatialmath.NewZeroOrientation(), lastError
 	}
-	g.ntripMu.Unlock()
 
 	return g.Nmeamovementsensor.Orientation(ctx, extra)
 }
 
 // ReadFix passthrough.
 func (g *RTKI2CNoNetwork) ReadFix(ctx context.Context) (int, error) {
-	g.ntripMu.Lock()
 	lastError := g.err.Get()
 	if lastError != nil {
-		defer g.ntripMu.Unlock()
 		return 0, lastError
 	}
-	g.ntripMu.Unlock()
 
 	return g.Nmeamovementsensor.ReadFix(ctx)
 }
@@ -637,39 +331,20 @@ func (g *RTKI2CNoNetwork) Readings(ctx context.Context, extra map[string]interfa
 
 // Close shuts down the RTKI2CNoNetwork.
 func (g *RTKI2CNoNetwork) Close(ctx context.Context) error {
-	g.ntripMu.Lock()
+
 	g.cancelFunc()
 
 	if err := g.Nmeamovementsensor.Close(ctx); err != nil {
-		g.ntripMu.Unlock()
 		return err
 	}
 
 	// close ntrip writer
 	if g.CorrectionWriter != nil {
 		if err := g.CorrectionWriter.Close(); err != nil {
-			g.ntripMu.Unlock()
 			return err
 		}
 		g.CorrectionWriter = nil
 	}
-
-	// close ntrip client and stream
-	if g.ntripClient.Client != nil {
-		g.ntripClient.Client.CloseIdleConnections()
-		g.ntripClient.Client = nil
-	}
-
-	if g.ntripClient.Stream != nil {
-		if err := g.ntripClient.Stream.Close(); err != nil {
-			g.ntripMu.Unlock()
-			return err
-		}
-		g.ntripClient.Stream = nil
-	}
-
-	g.ntripMu.Unlock()
-	g.activeBackgroundWorkers.Wait()
 
 	if err := g.err.Get(); err != nil && !errors.Is(err, context.Canceled) {
 		return err
