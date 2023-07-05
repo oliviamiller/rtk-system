@@ -2,7 +2,6 @@ package stationi2c
 
 import (
 	"context"
-	"log"
 	"sync"
 
 	"github.com/edaniels/golog"
@@ -19,7 +18,7 @@ const (
 )
 
 var (
-	Model               = resource.NewModel("viam-labs", "sensor", "correction-station")
+	Model               = resource.NewModel("viam-labs", "sensor", "correction-station-i2c")
 	errRequiredAccuracy = errors.New("required accuracy can be a fixed number 1-5, 5 being the highest accuracy")
 )
 
@@ -128,7 +127,6 @@ func newRTKStationI2C(
 	// Init correction source
 	r.i2cPath.addr = byte(newConf.I2CAddr)
 	r.i2cPath.bus = newConf.I2CBus
-	log.Println(r.i2cPath)
 	r.correctionSource, err = newI2CCorrectionSource(deps, newConf, logger)
 	if err != nil {
 		return nil, err

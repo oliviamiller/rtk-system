@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 
 	"github.com/d2r2/go-i2c"
@@ -20,6 +21,7 @@ import (
 )
 
 var errNilLocation = errors.New("nil gps location, check nmea message parsing")
+var Model = resource.NewModel("viam-labs", "movement-sensor", "gps-nmea-i2c")
 
 // Config is used for converting NMEA Movement Sensor attibutes.
 type Config struct {
@@ -51,8 +53,6 @@ func (cfg *Config) Validate(path string) ([]string, error) {
 	return []string{}, nil
 }
 
-var model = resource.DefaultModelFamily.WithModel("gps-nmea")
-
 // NmeaMovementSensor implements a gps that sends nmea messages for movement data.
 type NmeaMovementSensor interface {
 	movementsensor.MovementSensor
@@ -64,7 +64,7 @@ type NmeaMovementSensor interface {
 func init() {
 	resource.RegisterComponent(
 		movementsensor.API,
-		model,
+		Model,
 		resource.Registration[movementsensor.MovementSensor, *Config]{
 			Constructor: func(
 				ctx context.Context,
@@ -133,6 +133,8 @@ type I2CNMEAMovementSensor struct {
 
 // Start begins reading nmea messages from module and updates gps data.
 func (g *I2CNMEAMovementSensor) Start(ctx context.Context) error {
+
+	log.Println("staring the i2c nmea")
 	// create i2c connection
 	i2cBus, err := i2c.NewI2C(g.addr, g.bus)
 	if err != nil {
