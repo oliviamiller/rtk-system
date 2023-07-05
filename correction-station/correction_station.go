@@ -174,7 +174,7 @@ func newRTKStation(
 
 	err := ConfigureBaseRTKStation(newConf)
 	if err != nil {
-		r.logger.Info("rtk base station could not be configured")
+		r.logger.Error("rtk base station could not be configured")
 		return r, err
 	}
 
