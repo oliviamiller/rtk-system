@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"sync"
 
 	"github.com/d2r2/go-i2c"
@@ -134,7 +133,6 @@ type I2CNMEAMovementSensor struct {
 // Start begins reading nmea messages from module and updates gps data.
 func (g *I2CNMEAMovementSensor) Start(ctx context.Context) error {
 
-	log.Println("staring the i2c nmea")
 	// create i2c connection
 	i2cBus, err := i2c.NewI2C(g.addr, g.bus)
 	if err != nil {
