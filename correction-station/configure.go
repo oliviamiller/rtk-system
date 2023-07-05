@@ -81,16 +81,12 @@ func ConfigureBaseRTKStation(newConf *Config) error {
 	observationTime := newConf.RequiredTime
 
 	c := &configCommand{
+		surveyIn:        timeMode,
 		correctionType:  correctionType,
 		requiredAcc:     requiredAcc,
 		observationTime: observationTime,
 		msgsToEnable:    rtcmMsgs, // defaults
 		msgsToDisable:   nmeaMsgs, // defaults
-	}
-
-	// already configured
-	if c.surveyIn != timeMode {
-		return nil
 	}
 
 	switch c.correctionType {

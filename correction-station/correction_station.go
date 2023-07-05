@@ -92,10 +92,6 @@ func (cfg *Config) Validate(path string) ([]string, error) {
 
 	switch cfg.Protocol {
 	case i2cStr:
-		if cfg.I2CConfig.Board == "" {
-			return nil, utils.NewConfigValidationFieldRequiredError(path, "board")
-		}
-		deps = append(deps, cfg.I2CConfig.Board)
 		return deps, cfg.I2CConfig.ValidateI2C(path)
 	case serialStr:
 		if cfg.SerialConfig.SerialPath == "" {
@@ -147,7 +143,6 @@ type rtkStation struct {
 }
 
 type correctionSource interface {
-	Reader() (io.ReadCloser, error)
 	Start(ready chan<- bool)
 	Close(ctx context.Context) error
 }
@@ -177,14 +172,15 @@ func newRTKStation(
 
 	r.protocol = newConf.Protocol
 
+	err := ConfigureBaseRTKStation(newConf)
+	if err != nil {
+		r.logger.Error("rtk base station could not be configured")
+		return r, err
+	}
+
 	// Init correction source
 	switch r.protocol {
 	case serialStr:
-		err := ConfigureBaseRTKStation(newConf)
-		if err != nil {
-			r.logger.Info("rtk base station could not be configured")
-			return r, err
-		}
 		r.correctionSource, err = newSerialCorrectionSource(newConf, logger)
 		if err != nil {
 			return nil, err
@@ -232,45 +228,13 @@ func (r *rtkStation) start(ctx context.Context) {
 			return
 		}
 
-		// read from correction source
+		// Start the correction source
 		ready := make(chan bool)
 		r.correctionSource.Start(ready)
-
 		select {
 		case <-ready:
 		case <-r.cancelCtx.Done():
 			return
-		}
-		stream, err := r.correctionSource.Reader()
-		if err != nil {
-			r.logger.Errorf("Unable to get reader: %s", err)
-			r.err.Set(err)
-			return
-		}
-
-		// reader will write stream to the serial port
-		reader := io.TeeReader(stream, r.serialWriter)
-
-		// write corrections to the serial port/i2c handle
-		for {
-			select {
-			case <-r.cancelCtx.Done():
-				return
-			default:
-			}
-
-			buf := make([]byte, 1100)
-			n, err := reader.Read(buf)
-			r.logger.Debugf("Reading %d bytes", n)
-			if err != nil {
-				if err.Error() == "io: read/write on closed pipe" {
-					r.logger.Debug("Pipe closed")
-					return
-				}
-				r.logger.Errorf("Unable to read stream: %s", err)
-				r.err.Set(err)
-				return
-			}
 		}
 	})
 }
@@ -286,10 +250,12 @@ func (r *rtkStation) Close(ctx context.Context) error {
 		return err
 	}
 
-	// close the serial port
-	err = r.serialWriter.(io.ReadWriteCloser).Close()
-	if err != nil {
-		return err
+	if r.protocol == serialStr {
+		// close the serial port
+		err = r.serialWriter.(io.ReadWriteCloser).Close()
+		if err != nil {
+			return err
+		}
 	}
 
 	if err := r.err.Get(); err != nil && !errors.Is(err, context.Canceled) {

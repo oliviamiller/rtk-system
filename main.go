@@ -4,8 +4,10 @@ package main
 import (
 	"context"
 	station "rtkstation/correction-station"
+	gpsrtkserialnonetwork "rtkstation/gps-rtk-serial-no-network"
 
 	"github.com/edaniels/golog"
+	"go.viam.com/rdk/components/movementsensor"
 	"go.viam.com/rdk/components/sensor"
 	"go.viam.com/rdk/module"
 	"go.viam.com/utils"
@@ -16,18 +18,20 @@ func main() {
 }
 
 func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) error {
-	rtkStation, err := module.NewModuleFromArgs(ctx, logger)
+	rtkSystem, err := module.NewModuleFromArgs(ctx, logger)
 
 	if err != nil {
 		return err
 	}
-	rtkStation.AddModelFromRegistry(ctx, sensor.API, station.StationModel)
+	rtkSystem.AddModelFromRegistry(ctx, sensor.API, station.StationModel)
+	rtkSystem.AddModelFromRegistry(ctx, movementsensor.API, gpsrtkserialnonetwork.Model)
 
-	err = rtkStation.Start(ctx)
-	defer rtkStation.Close(ctx)
+	err = rtkSystem.Start(ctx)
+	defer rtkSystem.Close(ctx)
 	if err != nil {
 		return err
 	}
+
 	<-ctx.Done()
 	return nil
 }
