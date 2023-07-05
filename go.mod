@@ -8,14 +8,14 @@ require (
 	github.com/d2r2/go-logger v0.0.0-20210606094344-60e9d1233e22
 	github.com/edaniels/golog v0.0.0-20230215213219-28954395e8d0
 	github.com/go-gnss/rtcm v0.0.6
-	github.com/golang/geo v0.0.0-20230421003525-6adc56603217
+	github.com/golang/geo v0.0.0-20210211234256-740aa86cb551
 	github.com/jacobsa/go-serial v0.0.0-20180131005756-15cf729a72d4
 	github.com/kellydunn/golang-geo v0.7.0
 	github.com/pkg/errors v0.9.1
 	go.uber.org/multierr v1.11.0
 	go.viam.com/rdk v0.3.0
 	go.viam.com/test v1.1.1-0.20220913152726-5da9916c08a2
-	go.viam.com/utils v0.1.37
+	go.viam.com/utils v0.1.36
 )
 
 require (
