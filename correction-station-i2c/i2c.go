@@ -63,27 +63,11 @@ func (s *i2cCorrectionSource) Start(ready chan<- bool) {
 		case <-s.cancelCtx.Done():
 			return
 		}
-		// create i2c connection
 		var err error
-		s.i2cBus, err = i2c.NewI2C(s.addr, s.bus)
-		s.err.Set(err)
-
 		// change log level
 		logger.ChangePackageLogLevel("i2c", logger.InfoLevel)
 
 		buf := make([]byte, 1024)
-		_, err = s.i2cBus.ReadBytes(buf)
-		if err != nil {
-			s.logger.Errorf("can't read bytes from i2c buffer: %s", err)
-		}
-
-		// close I2C cionnection
-		err = s.i2cBus.Close()
-		s.err.Set(err)
-		if err != nil {
-			s.logger.Errorf("failed to close i2c handle: %s", err)
-			return
-		}
 
 		for err == nil {
 			select {

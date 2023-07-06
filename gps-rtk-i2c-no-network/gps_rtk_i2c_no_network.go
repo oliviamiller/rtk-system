@@ -3,7 +3,6 @@ package gpsrtki2c
 import (
 	"context"
 	"errors"
-	"log"
 	"math"
 	"sync"
 
@@ -152,40 +151,6 @@ func (g *RTKI2CNoNetwork) receiveAndWriteI2C(ctx context.Context) {
 		return
 	}
 
-	// open the i2c connectiond
-	/*	readI2c, err := i2c.NewI2C(g.readAddr, g.bus)
-		g.err.Set(err)
-
-		writeI2c, err := i2c.NewI2C(g.writeAddr, g.bus)
-		g.err.Set(err)
-
-		// change log level
-		logger.ChangePackageLogLevel("i2c", logger.InfoLevel)
-
-		buf := make([]byte, 1024)
-		_, err = readI2c.ReadBytes(buf)
-		if err != nil {
-			g.logger.Error("Could not read from the i2c connection")
-		}
-
-		_, err = writeI2c.WriteBytes(buf)
-		if err != nil {
-			g.logger.Error("Could not write to i2c address")
-		}
-
-		// close I2C handles
-		err = readI2c.Close()
-		g.err.Set(err)
-		if err != nil {
-			g.logger.Error("failed to close i2c handle: %s", err)
-			return
-		}
-		err = writeI2c.Close()
-		g.err.Set(err)
-		if err != nil {
-			g.logger.Debug("failed to close i2c handle: %s", err)
-			return
-		} */
 	var err error
 	for err == nil {
 		select {
@@ -229,9 +194,7 @@ func (g *RTKI2CNoNetwork) receiveAndWriteI2C(ctx context.Context) {
 		}
 
 		// close I2C handles each time so other processes can use them
-		log.Println(g.readI2c)
 		err = g.readI2c.Close()
-		log.Println(g.readI2c)
 		g.err.Set(err)
 		if err != nil {
 			g.logger.Debug("failed to close i2c handle: %s", err)
@@ -384,16 +347,12 @@ func (g *RTKI2CNoNetwork) Close(ctx context.Context) error {
 
 	g.cancelFunc()
 
-	if g.readI2c != nil {
-		if err := g.readI2c.Close(); err != nil {
-			return err
-		}
+	if err := g.readI2c.Close(); err != nil {
+		return err
 	}
 
-	if g.writeI2c != nil {
-		if err := g.readI2c.Close(); err != nil {
-			return err
-		}
+	if err := g.readI2c.Close(); err != nil {
+		return err
 	}
 
 	if err := g.Nmeamovementsensor.Close(ctx); err != nil {

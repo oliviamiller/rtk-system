@@ -29,17 +29,6 @@ type Config struct {
 	I2CBaudRate int `json:"i2c_baud_rate,omitempty"`
 }
 
-// SerialConfig is used for converting Serial NMEA MovementSensor config attributes.
-type SerialConfig struct {
-	SerialPath               string `json:"serial_path"`
-	SerialBaudRate           int    `json:"serial_baud_rate,omitempty"`
-	SerialCorrectionPath     string `json:"serial_correction_path,omitempty"`
-	SerialCorrectionBaudRate int    `json:"serial_correction_baud_rate,omitempty"`
-
-	// TestChan is a fake "serial" path for test use only
-	TestChan chan []uint8 `json:"-"`
-}
-
 // Validate ensures all parts of the config are valid.
 func (cfg *Config) Validate(path string) ([]string, error) {
 	if cfg.I2CBus == 0 {
