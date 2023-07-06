@@ -27,8 +27,10 @@ var Model = resource.NewModel("viam-labs", "movement-sensor", "gps-rtk-i2c-no-ne
 const i2cStr = "i2c"
 
 type Config struct {
-	I2CBus      int `json:"i2c_bus"`
-	I2cAddr     int `json:"i2c_addr"`
+	I2CBus   int `json:"i2c_bus"`
+	NMEAAddr int `json:"nmea_i2c_addr"`
+	RCTMAddr int `json:"rctm_i2c_addr"`
+
 	I2CBaudRate int `json:"i2c_baud_rate,omitempty"`
 }
 
@@ -37,7 +39,7 @@ func (cfg *Config) Validate(path string) ([]string, error) {
 	if cfg.I2CBus == 0 {
 		return nil, utils.NewConfigValidationFieldRequiredError(path, "i2c_bus")
 	}
-	if cfg.I2cAddr == 0 {
+	if cfg.NMEAAddr == 0 {
 		return nil, utils.NewConfigValidationFieldRequiredError(path, "i2c_addr")
 	}
 	return []string{}, nil
@@ -79,9 +81,10 @@ type RTKI2CNoNetwork struct {
 	Nmeamovementsensor gpsnmea.NmeaMovementSensor
 	CorrectionWriter   io.ReadWriteCloser
 
-	bus   int
-	wbaud int
-	addr  byte
+	bus       int
+	wbaud     int
+	readAddr  byte
+	writeAddr byte
 }
 
 func newRTKI2CNoNetwork(
@@ -109,13 +112,14 @@ func newRTKI2CNoNetwork(
 
 	// Init NMEAMovementSensor
 	var err error
-	nmeaConf := (*nmea.Config)(newConf)
+	nmeaConf := &nmea.Config{I2CBus: newConf.I2CBus, I2cAddr: newConf.NMEAAddr}
 	g.Nmeamovementsensor, err = nmea.NewNMEAGPS(ctx, deps, name, nmeaConf, logger)
 	if err != nil {
 		return nil, err
 	}
 	g.wbaud = newConf.I2CBaudRate
-	g.addr = byte(newConf.I2cAddr)
+	g.readAddr = byte(newConf.RCTMAddr)
+	g.writeAddr = byte(newConf.NMEAAddr)
 	g.bus = newConf.I2CBus
 
 	if err := g.start(); err != nil {
@@ -148,51 +152,92 @@ func (g *RTKI2CNoNetwork) receiveAndWriteI2C(ctx context.Context) {
 	}
 
 	// create i2c bus
-	i2cBus, err := i2c.NewI2C(g.addr, g.bus)
+	readBus, err := i2c.NewI2C(g.readAddr, g.bus)
+	g.err.Set(err)
+
+	writeI2c, err := i2c.NewI2C(g.writeAddr, g.bus)
 	g.err.Set(err)
 
 	// change so you don't see a million logs
 	logger.ChangePackageLogLevel("i2c", logger.InfoLevel)
 
 	buf := make([]byte, 1024)
-	_, err = i2cBus.ReadBytes(buf)
+	_, err = readBus.ReadBytes(buf)
 	if err != nil {
-		g.logger.Debug("Could not read from handle")
+		g.logger.Debug("Could not read from the i2c address")
 	}
 
-	// close I2C handle
-	err = i2cBus.Close()
+	_, err = writeI2c.WriteBytes(buf)
+	if err != nil {
+		g.logger.Debug("Could not write to i2c address")
+	}
+
+	// close I2C handles
+	err = readBus.Close()
 	g.err.Set(err)
 	if err != nil {
 		g.logger.Debug("failed to close i2c handle: %s", err)
 		return
 	}
 
+	// close I2C handles
+	err = writeI2c.Close()
+	g.err.Set(err)
+	if err != nil {
+		g.logger.Debug("failed to close i2c handle: %s", err)
+		return
+	}
 	for err == nil {
 		select {
 		case <-g.cancelCtx.Done():
 			return
 		default:
 		}
-		// Open I2C handle every time
-		i2cBus, err := i2c.NewI2C(g.addr, g.bus)
+		var rctmData []byte
+		// create i2c bus
+		readBus, err := i2c.NewI2C(g.readAddr, g.bus)
 		g.err.Set(err)
 
-		_, err = i2cBus.ReadBytes(buf)
+		writeI2c, err := i2c.NewI2C(g.writeAddr, g.bus)
 		g.err.Set(err)
+
+		// change so you don't see a million logs
+		logger.ChangePackageLogLevel("i2c", logger.InfoLevel)
+
+		buf := make([]byte, 1024)
+		_, err = readBus.ReadBytes(buf)
 		if err != nil {
-			g.logger.Errorf("can't open gps i2c handle: %s", err)
-			return
+			g.logger.Debug("Could not read from the i2c address")
 		}
 
-		// close I2C handle
-		err = i2cBus.Close()
+		for _, b := range buf {
+			if b != 255 {
+				rctmData = append(rctmData, b)
+			}
+		}
+
+		if len(rctmData) != 0 {
+			_, err = writeI2c.WriteBytes(rctmData)
+			if err != nil {
+				g.logger.Debug("Could not write to i2c address")
+			}
+		}
+
+		// close I2C handles
+		err = readBus.Close()
 		g.err.Set(err)
 		if err != nil {
 			g.logger.Debug("failed to close i2c handle: %s", err)
 			return
 		}
 
+		// close I2C handles
+		err = writeI2c.Close()
+		g.err.Set(err)
+		if err != nil {
+			g.logger.Debug("failed to close i2c handle: %s", err)
+			return
+		}
 	}
 }
 

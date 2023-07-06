@@ -84,7 +84,7 @@ func (s *i2cCorrectionSource) Start(ready chan<- bool) {
 		buf := make([]byte, 1024)
 		_, err = i2cBus.ReadBytes(buf)
 		if err != nil {
-			s.logger.Debug("Could not read from handle")
+			s.logger.Errorf("can't read bytes from i2c buffer: %s", err)
 		}
 
 		// close I2C handle
@@ -101,6 +101,7 @@ func (s *i2cCorrectionSource) Start(ready chan<- bool) {
 				return
 			default:
 			}
+
 			// Open I2C handle every time
 			i2cBus, err := i2c.NewI2C(s.addr, s.bus)
 			s.err.Set(err)
@@ -108,7 +109,7 @@ func (s *i2cCorrectionSource) Start(ready chan<- bool) {
 			_, err = i2cBus.ReadBytes(buf)
 			s.err.Set(err)
 			if err != nil {
-				s.logger.Errorf("can't open gps i2c handle: %s", err)
+				s.logger.Errorf("can't read bytes from i2c buffer: %s", err)
 				return
 			}
 

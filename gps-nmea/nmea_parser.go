@@ -1,7 +1,6 @@
 package nmea
 
 import (
-	"log"
 	"math"
 	"strconv"
 	"strings"
@@ -36,8 +35,6 @@ func errInvalidFix(sentenceType, badFix, goodFix string) error {
 // parseAndUpdate will attempt to parse a line to an NMEA sentence, and if valid, will try to update the given struct
 // with the values for that line. Nothing will be updated if there is not a valid gps fix.
 func (g *gpsData) parseAndUpdate(line string) error {
-	log.Println("parsing nmea data.....")
-	log.Println(line)
 	// add parsing to filter out corrupted data
 	ind := strings.Index(line, "$G")
 	if ind == -1 {

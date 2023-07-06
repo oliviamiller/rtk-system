@@ -137,7 +137,7 @@ func newRTKStationI2C(
 	return r, r.err.Get()
 }
 
-// Start starts reading from the correction source and sends corrections to the radio/bluetooth.
+// Start starts reading from the correction source and sends corrections the i2c buffer.
 func (r *rtkStationI2C) start(ctx context.Context) {
 	r.activeBackgroundWorkers.Add(1)
 	utils.PanicCapturingGo(func() {
