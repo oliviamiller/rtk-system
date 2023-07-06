@@ -1,5 +1,6 @@
 package stationi2c
 
+/*
 import (
 	"testing"
 

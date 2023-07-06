@@ -3,7 +3,7 @@ package gpsrtki2c
 import (
 	"context"
 	"errors"
-	"io"
+	"log"
 	"math"
 	"sync"
 
@@ -27,10 +27,9 @@ var Model = resource.NewModel("viam-labs", "movement-sensor", "gps-rtk-i2c-no-ne
 const i2cStr = "i2c"
 
 type Config struct {
-	I2CBus   int `json:"i2c_bus"`
-	NMEAAddr int `json:"nmea_i2c_addr"`
-	RCTMAddr int `json:"rctm_i2c_addr"`
-
+	I2CBus      int `json:"i2c_bus"`
+	NMEAAddr    int `json:"nmea_i2c_addr"`
+	RCTMAddr    int `json:"rctm_i2c_addr"`
 	I2CBaudRate int `json:"i2c_baud_rate,omitempty"`
 }
 
@@ -40,7 +39,10 @@ func (cfg *Config) Validate(path string) ([]string, error) {
 		return nil, utils.NewConfigValidationFieldRequiredError(path, "i2c_bus")
 	}
 	if cfg.NMEAAddr == 0 {
-		return nil, utils.NewConfigValidationFieldRequiredError(path, "i2c_addr")
+		return nil, utils.NewConfigValidationFieldRequiredError(path, "nmea_i2c_addr")
+	}
+	if cfg.RCTMAddr == 0 {
+		return nil, utils.NewConfigValidationFieldRequiredError(path, "rctm_i2c_addr")
 	}
 	return []string{}, nil
 }
@@ -79,12 +81,13 @@ type RTKI2CNoNetwork struct {
 	lastposition movementsensor.LastPosition
 
 	Nmeamovementsensor gpsnmea.NmeaMovementSensor
-	CorrectionWriter   io.ReadWriteCloser
 
 	bus       int
 	wbaud     int
 	readAddr  byte
 	writeAddr byte
+	readI2c   *i2c.I2C
+	writeI2c  *i2c.I2C
 }
 
 func newRTKI2CNoNetwork(
@@ -130,8 +133,6 @@ func newRTKI2CNoNetwork(
 
 // Start begins the background task to recieve and write I2C.
 func (g *RTKI2CNoNetwork) start() error {
-	// TODO(RDK-1639): Test out what happens if we call this line and then the ReceiveAndWrite*
-	// correction data goes wrong. Could anything worse than uncorrected data occur?
 	if err := g.Nmeamovementsensor.Start(g.cancelCtx); err != nil {
 		g.lastposition.GetLastPosition()
 		return err
@@ -143,7 +144,7 @@ func (g *RTKI2CNoNetwork) start() error {
 	return g.err.Get()
 }
 
-// receiveAndWriteI2C connects to NTRIP receiver and sends correction stream to the MovementSensor through I2C protocol.
+// receiveAndWriteI2C reads tbe rctm correction messages from the read addr and writes the write addr
 func (g *RTKI2CNoNetwork) receiveAndWriteI2C(ctx context.Context) {
 
 	defer g.activeBackgroundWorkers.Done()
@@ -151,42 +152,41 @@ func (g *RTKI2CNoNetwork) receiveAndWriteI2C(ctx context.Context) {
 		return
 	}
 
-	// create i2c bus
-	readBus, err := i2c.NewI2C(g.readAddr, g.bus)
-	g.err.Set(err)
+	// open the i2c connectiond
+	/*	readI2c, err := i2c.NewI2C(g.readAddr, g.bus)
+		g.err.Set(err)
 
-	writeI2c, err := i2c.NewI2C(g.writeAddr, g.bus)
-	g.err.Set(err)
+		writeI2c, err := i2c.NewI2C(g.writeAddr, g.bus)
+		g.err.Set(err)
 
-	// change so you don't see a million logs
-	logger.ChangePackageLogLevel("i2c", logger.InfoLevel)
+		// change log level
+		logger.ChangePackageLogLevel("i2c", logger.InfoLevel)
 
-	buf := make([]byte, 1024)
-	_, err = readBus.ReadBytes(buf)
-	if err != nil {
-		g.logger.Debug("Could not read from the i2c address")
-	}
+		buf := make([]byte, 1024)
+		_, err = readI2c.ReadBytes(buf)
+		if err != nil {
+			g.logger.Error("Could not read from the i2c connection")
+		}
 
-	_, err = writeI2c.WriteBytes(buf)
-	if err != nil {
-		g.logger.Debug("Could not write to i2c address")
-	}
+		_, err = writeI2c.WriteBytes(buf)
+		if err != nil {
+			g.logger.Error("Could not write to i2c address")
+		}
 
-	// close I2C handles
-	err = readBus.Close()
-	g.err.Set(err)
-	if err != nil {
-		g.logger.Debug("failed to close i2c handle: %s", err)
-		return
-	}
-
-	// close I2C handles
-	err = writeI2c.Close()
-	g.err.Set(err)
-	if err != nil {
-		g.logger.Debug("failed to close i2c handle: %s", err)
-		return
-	}
+		// close I2C handles
+		err = readI2c.Close()
+		g.err.Set(err)
+		if err != nil {
+			g.logger.Error("failed to close i2c handle: %s", err)
+			return
+		}
+		err = writeI2c.Close()
+		g.err.Set(err)
+		if err != nil {
+			g.logger.Debug("failed to close i2c handle: %s", err)
+			return
+		} */
+	var err error
 	for err == nil {
 		select {
 		case <-g.cancelCtx.Done():
@@ -194,22 +194,26 @@ func (g *RTKI2CNoNetwork) receiveAndWriteI2C(ctx context.Context) {
 		default:
 		}
 		var rctmData []byte
-		// create i2c bus
-		readBus, err := i2c.NewI2C(g.readAddr, g.bus)
+
+		// create i2c connections
+		var err error
+		g.readI2c, err = i2c.NewI2C(g.readAddr, g.bus)
 		g.err.Set(err)
 
-		writeI2c, err := i2c.NewI2C(g.writeAddr, g.bus)
+		g.writeI2c, err = i2c.NewI2C(g.writeAddr, g.bus)
 		g.err.Set(err)
 
 		// change so you don't see a million logs
 		logger.ChangePackageLogLevel("i2c", logger.InfoLevel)
 
 		buf := make([]byte, 1024)
-		_, err = readBus.ReadBytes(buf)
+		_, err = g.readI2c.ReadBytes(buf)
+		g.err.Set(err)
 		if err != nil {
 			g.logger.Debug("Could not read from the i2c address")
 		}
 
+		// write only the rctm data
 		for _, b := range buf {
 			if b != 255 {
 				rctmData = append(rctmData, b)
@@ -217,22 +221,23 @@ func (g *RTKI2CNoNetwork) receiveAndWriteI2C(ctx context.Context) {
 		}
 
 		if len(rctmData) != 0 {
-			_, err = writeI2c.WriteBytes(rctmData)
+			_, err = g.writeI2c.WriteBytes(rctmData)
+			g.err.Set(err)
 			if err != nil {
 				g.logger.Debug("Could not write to i2c address")
 			}
 		}
 
-		// close I2C handles
-		err = readBus.Close()
+		// close I2C handles each time so other processes can use them
+		log.Println(g.readI2c)
+		err = g.readI2c.Close()
+		log.Println(g.readI2c)
 		g.err.Set(err)
 		if err != nil {
 			g.logger.Debug("failed to close i2c handle: %s", err)
 			return
 		}
-
-		// close I2C handles
-		err = writeI2c.Close()
+		err = g.writeI2c.Close()
 		g.err.Set(err)
 		if err != nil {
 			g.logger.Debug("failed to close i2c handle: %s", err)
@@ -379,16 +384,20 @@ func (g *RTKI2CNoNetwork) Close(ctx context.Context) error {
 
 	g.cancelFunc()
 
-	if err := g.Nmeamovementsensor.Close(ctx); err != nil {
-		return err
-	}
-
-	// close ntrip writer
-	if g.CorrectionWriter != nil {
-		if err := g.CorrectionWriter.Close(); err != nil {
+	if g.readI2c != nil {
+		if err := g.readI2c.Close(); err != nil {
 			return err
 		}
-		g.CorrectionWriter = nil
+	}
+
+	if g.writeI2c != nil {
+		if err := g.readI2c.Close(); err != nil {
+			return err
+		}
+	}
+
+	if err := g.Nmeamovementsensor.Close(ctx); err != nil {
+		return err
 	}
 
 	if err := g.err.Get(); err != nil && !errors.Is(err, context.Canceled) {

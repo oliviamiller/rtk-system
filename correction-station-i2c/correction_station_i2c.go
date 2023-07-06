@@ -42,7 +42,7 @@ func init() {
 		})
 }
 
-// Config is used for converting RTK MovementSensor config attributes.
+// Config is used for the correction-station-i2c attributes
 type Config struct {
 	RequiredAccuracy float64 `json:"required_accuracy,omitempty"` // fixed number 1-5, 5 being the highest accuracy
 	RequiredTime     int     `json:"required_time_sec,omitempty"`
