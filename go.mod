@@ -3,7 +3,7 @@ module rtksystem
 go 1.18
 
 require (
-	github.com/adrianmo/go-nmea v1.8.0
+	github.com/adrianmo/go-nmea v1.7.0
 	github.com/d2r2/go-i2c v0.0.0-20191123181816-73a8a799d6bc
 	github.com/d2r2/go-logger v0.0.0-20210606094344-60e9d1233e22
 	github.com/edaniels/golog v0.0.0-20230215213219-28954395e8d0

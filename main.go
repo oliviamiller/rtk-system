@@ -8,6 +8,7 @@ import (
 	stationserial "rtksystem/correction-station-serial"
 	gpsnmea "rtksystem/gps-nmea"
 	gpsrtki2c "rtksystem/gps-rtk-i2c-no-network"
+	gpsrtkserialnonetwork "rtksystem/gps-rtk-serial-no-network"
 
 	"github.com/edaniels/golog"
 	"go.viam.com/rdk/components/movementsensor"
@@ -30,12 +31,14 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) error
 	rtkSystem.AddModelFromRegistry(ctx, sensor.API, stationserial.Model)
 	rtkSystem.AddModelFromRegistry(ctx, movementsensor.API, gpsrtki2c.Model)
 	rtkSystem.AddModelFromRegistry(ctx, movementsensor.API, gpsnmea.Model)
+	rtkSystem.AddModelFromRegistry(ctx, movementsensor.API, gpsrtkserialnonetwork.Model)
 
 	err = rtkSystem.Start(ctx)
 	defer rtkSystem.Close(ctx)
 	if err != nil {
 		return err
 	}
+
 	<-ctx.Done()
 	return nil
 }
