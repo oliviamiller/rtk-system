@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"math"
+	nmea "rtkstation/gps-nmea"
 	"sync"
 
 	"github.com/edaniels/golog"
@@ -106,15 +107,14 @@ func newrtkSerialNoNetwork(
 		lastposition: movementsensor.NewLastPosition(),
 	}
 
-	nmeaConf := &gpsnmea.Config{
+	nmeaConf := &nmea.Config{
 		ConnectionType: serialStr,
-		DisableNMEA:    false,
 	}
 
 	// Init NMEAMovementSensor
-	nmeaConf.SerialConfig = &gpsnmea.SerialConfig{SerialPath: newConf.SerialNMEAPath, SerialBaudRate: newConf.SerialNMEABaudRate}
+	nmeaConf.SerialConfig = &nmea.SerialConfig{SerialPath: newConf.SerialNMEAPath, SerialBaudRate: newConf.SerialNMEABaudRate}
 	var err error
-	g.nmeamovementsensor, err = gpsnmea.NewSerialGPSNMEA(ctx, name, nmeaConf, logger)
+	g.nmeamovementsensor, err = nmea.NewSerialGPSNMEA(ctx, name, nmeaConf, logger)
 	if err != nil {
 		return nil, err
 	}

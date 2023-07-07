@@ -3,6 +3,9 @@ module rtkstation
 go 1.18
 
 require (
+	github.com/adrianmo/go-nmea v1.7.0
+	github.com/d2r2/go-i2c v0.0.0-20191123181816-73a8a799d6bc
+	github.com/d2r2/go-logger v0.0.0-20210606094344-60e9d1233e22
 	github.com/edaniels/golog v0.0.0-20230215213219-28954395e8d0
 	github.com/go-gnss/rtcm v0.0.6
 	github.com/golang/geo v0.0.0-20210211234256-740aa86cb551
@@ -21,7 +24,6 @@ require (
 	cloud.google.com/go/storage v1.30.1 // indirect
 	git.sr.ht/~sbinet/gg v0.3.1 // indirect
 	github.com/a8m/envsubst v1.4.2 // indirect
-	github.com/adrianmo/go-nmea v1.7.0 // indirect
 	github.com/ajstarks/svgo v0.0.0-20211024235047-1546f124cd8b // indirect
 	github.com/alecthomas/participle/v2 v2.0.0-alpha3 // indirect
 	github.com/bamiaux/iobit v0.0.0-20170418073505-498159a04883 // indirect

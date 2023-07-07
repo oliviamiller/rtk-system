@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	station "rtkstation/correction-station"
+	nmea "rtkstation/gps-nmea"
 	gpsrtkserialnonetwork "rtkstation/gps-rtk-serial-no-network"
 
 	"github.com/edaniels/golog"
@@ -25,6 +26,7 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) error
 	}
 	rtkSystem.AddModelFromRegistry(ctx, sensor.API, station.StationModel)
 	rtkSystem.AddModelFromRegistry(ctx, movementsensor.API, gpsrtkserialnonetwork.Model)
+	rtkSystem.AddModelFromRegistry(ctx, movementsensor.API, nmea.Model)
 
 	err = rtkSystem.Start(ctx)
 	defer rtkSystem.Close(ctx)
