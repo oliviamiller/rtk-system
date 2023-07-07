@@ -5,10 +5,14 @@ import (
 	"testing"
 
 	"github.com/edaniels/golog"
+	"go.viam.com/rdk/components/movementsensor"
 	"go.viam.com/rdk/resource"
 	"go.viam.com/test"
 	"go.viam.com/utils"
 )
+
+const nmeaPath = "nmea-path"
+const correctionPath = "corr-path"
 
 func TestValidate(t *testing.T) {
 	path := "path"
@@ -58,17 +62,34 @@ func TestNewrtkSerialNoNetwork(t *testing.T) {
 	ctx := context.Background()
 	deps := make(resource.Dependencies)
 	tests := []struct {
-		name        string
-		config      resource.Config
-		expectedErr error
-	}{}
+		name           string
+		resourceConfig resource.Config
+		config         *Config
+		expectedErr    error
+	}{
+		{
+			name: "A valid config should successfully create new movementsensor",
+			resourceConfig: resource.Config{
+				Name:  "movementsensor1",
+				Model: Model,
+				API:   movementsensor.API,
+			},
+			config: &Config{
+				SerialNMEAPath:       nmeaPath,
+				SerialCorrectionPath: correctionPath,
+			},
+		},
+	}
+
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			conf, err := resource.NativeConfig[*Config](tc.config)
-			test.That(t, err, test.ShouldBeNil)
-			gps, err := newrtkSerialNoNetwork(ctx, deps, tc.config.ResourceName(), conf, logger)
+			gps, err := newrtkSerialNoNetwork(ctx, deps, tc.resourceConfig.ResourceName(), tc.config, logger)
 			if tc.expectedErr == nil {
 				test.That(t, err, test.ShouldNotBeNil)
+				test.That(t, gps.writePath, test.ShouldEqual, nmeaPath)
+				test.That(t, gps.writeBaudRate, test.ShouldEqual, 38400)
+				test.That(t, gps.readPath, test.ShouldEqual, correctionPath)
+				test.That(t, gps.readBaudRate, test.ShouldEqual, 38400)
 			}
 		})
 	}
