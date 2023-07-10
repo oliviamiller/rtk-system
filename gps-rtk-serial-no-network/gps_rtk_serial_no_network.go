@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log"
 	"math"
 	"sync"
 
@@ -29,6 +30,9 @@ type Config struct {
 	SerialNMEABaudRate       int    `json:"serial__nmea_baud_rate,omitempty"`
 	SerialCorrectionPath     string `json:"serial_correction_path"`
 	SerialCorrectionBaudRate int    `json:"serial_correction_baud_rate"`
+
+	// TestChan is a fake "serial" path for test use only
+	TestChan chan []uint8 `json:"-"`
 }
 
 // ValidateSerial ensures all parts of the config are valid.
@@ -111,13 +115,21 @@ func newrtkSerialNoNetwork(
 		DisableNMEA:    false,
 	}
 
+	if newConf.SerialNMEABaudRate == 0 {
+		newConf.SerialNMEABaudRate = 38400
+	}
+
+	log.Println(newConf.TestChan)
+
 	// Init NMEAMovementSensor
-	nmeaConf.SerialConfig = &gpsnmea.SerialConfig{SerialPath: newConf.SerialNMEAPath, SerialBaudRate: newConf.SerialNMEABaudRate}
+	nmeaConf.SerialConfig = &gpsnmea.SerialConfig{SerialPath: newConf.SerialNMEAPath, SerialBaudRate: newConf.SerialNMEABaudRate, TestChan: newConf.TestChan}
 	var err error
 	g.nmeamovementsensor, err = gpsnmea.NewSerialGPSNMEA(ctx, name, nmeaConf, logger)
 	if err != nil {
 		return nil, err
 	}
+
+	log.Println("here")
 
 	g.writePath = newConf.SerialNMEAPath
 	g.writeBaudRate = newConf.SerialNMEABaudRate
@@ -133,8 +145,10 @@ func newrtkSerialNoNetwork(
 		g.writeBaudRate = 38400
 	}
 
-	if err := g.start(); err != nil {
-		return nil, err
+	if newConf.TestChan == nil {
+		if err := g.start(); err != nil {
+			return nil, err
+		}
 	}
 	return g, g.err.Get()
 

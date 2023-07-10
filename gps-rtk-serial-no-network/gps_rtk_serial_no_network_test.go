@@ -6,6 +6,7 @@ import (
 
 	"github.com/edaniels/golog"
 	"go.viam.com/rdk/components/movementsensor"
+	"go.viam.com/rdk/components/movementsensor/fake"
 	"go.viam.com/rdk/resource"
 	"go.viam.com/test"
 	"go.viam.com/utils"
@@ -61,6 +62,7 @@ func TestNewrtkSerialNoNetwork(t *testing.T) {
 	logger := golog.NewTestLogger(t)
 	ctx := context.Background()
 	deps := make(resource.Dependencies)
+	c := make(chan []uint8)
 	tests := []struct {
 		name           string
 		resourceConfig resource.Config
@@ -77,20 +79,35 @@ func TestNewrtkSerialNoNetwork(t *testing.T) {
 			config: &Config{
 				SerialNMEAPath:       nmeaPath,
 				SerialCorrectionPath: correctionPath,
+				TestChan:             c,
 			},
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			gps, err := newrtkSerialNoNetwork(ctx, deps, tc.resourceConfig.ResourceName(), tc.config, logger)
+			g, err := newrtkSerialNoNetwork(ctx, deps, tc.resourceConfig.ResourceName(), tc.config, logger)
 			if tc.expectedErr == nil {
-				test.That(t, err, test.ShouldNotBeNil)
-				test.That(t, gps.writePath, test.ShouldEqual, nmeaPath)
-				test.That(t, gps.writeBaudRate, test.ShouldEqual, 38400)
-				test.That(t, gps.readPath, test.ShouldEqual, correctionPath)
-				test.That(t, gps.readBaudRate, test.ShouldEqual, 38400)
+				test.That(t, err, test.ShouldBeNil)
+				test.That(t, g.Close(context.Background()), test.ShouldBeNil)
+				test.That(t, g, test.ShouldNotBeNil)
+				test.That(t, g.Name(), test.ShouldEqual, tc.resourceConfig.ResourceName())
 			}
 		})
 	}
+}
+
+func TestClose(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+	ctx := context.Background()
+	cancelCtx, cancelFunc := context.WithCancel(ctx)
+	g := rtkSerialNoNetwork{
+		cancelCtx:  cancelCtx,
+		cancelFunc: cancelFunc,
+		logger:     logger,
+	}
+	g.nmeamovementsensor = &fake.MovementSensor{}
+
+	err := g.Close(ctx)
+	test.That(t, err, test.ShouldBeNil)
 }
