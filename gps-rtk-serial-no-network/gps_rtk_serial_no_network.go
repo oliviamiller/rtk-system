@@ -6,7 +6,7 @@ import (
 	"errors"
 	"io"
 	"math"
-	nmea "rtkstation/gps-nmea"
+	nmea "rtksystem/gps-nmea"
 	"sync"
 
 	"github.com/edaniels/golog"
@@ -15,7 +15,6 @@ import (
 	slib "github.com/jacobsa/go-serial/serial"
 	geo "github.com/kellydunn/golang-geo"
 	"go.viam.com/rdk/components/movementsensor"
-	"go.viam.com/rdk/components/movementsensor/gpsnmea"
 	"go.viam.com/rdk/resource"
 	"go.viam.com/rdk/spatialmath"
 	"go.viam.com/utils"
@@ -77,7 +76,7 @@ type rtkSerialNoNetwork struct {
 	err          movementsensor.LastError
 	lastposition movementsensor.LastPosition
 
-	nmeamovementsensor gpsnmea.NmeaMovementSensor
+	nmeamovementsensor nmea.NmeaMovementSensor
 	correctionWriter   io.ReadWriteCloser
 	correctionReader   io.ReadCloser
 	correctionReaderMu sync.Mutex

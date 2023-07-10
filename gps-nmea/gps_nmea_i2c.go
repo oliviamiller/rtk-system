@@ -1,4 +1,4 @@
-// Package nmea implements an NMEA serial gps for a gpsrtki2cnonetwork.
+// Package nmea implements the NMEA gps sensors for the no-network rtk models.
 package nmea
 
 import (
@@ -14,6 +14,7 @@ import (
 	"go.viam.com/utils"
 
 	"go.viam.com/rdk/components/movementsensor"
+	"go.viam.com/rdk/components/movementsensor/gpsnmea"
 	"go.viam.com/rdk/resource"
 	"go.viam.com/rdk/spatialmath"
 )
@@ -56,7 +57,7 @@ type I2CNMEAMovementSensor struct {
 	cancelCtx               context.Context
 	cancelFunc              func()
 	logger                  golog.Logger
-	data                    gpsData
+	data                    gpsnmea.GPSData
 	activeBackgroundWorkers sync.WaitGroup
 
 	disableNmea  bool
@@ -83,9 +84,9 @@ func (g *I2CNMEAMovementSensor) Start(ctx context.Context) error {
 
 	// Send GLL, RMC, VTG, GGA, GSA, and GSV sentences each 1000ms
 	baudcmd := fmt.Sprintf("PMTK251,%d", g.wbaud)
-	cmd251 := addChk([]byte(baudcmd))
-	cmd314 := addChk([]byte("PMTK314,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0"))
-	cmd220 := addChk([]byte("PMTK220,1000"))
+	cmd251 := movementsensor.PMTKAddChk([]byte(baudcmd))
+	cmd314 := movementsensor.PMTKAddChk([]byte("PMTK314,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0"))
+	cmd220 := movementsensor.PMTKAddChk([]byte("PMTK220,1000"))
 
 	_, err = i2cBus.WriteBytes(cmd251)
 	if err != nil {
@@ -155,7 +156,7 @@ func (g *I2CNMEAMovementSensor) Start(ctx context.Context) error {
 				if b == 0x0D {
 					if strBuf != "" {
 						g.mu.Lock()
-						err = g.data.parseAndUpdate(strBuf)
+						err = g.data.ParseAndUpdate(strBuf)
 						g.mu.Unlock()
 						if err != nil {
 							g.logger.Debugf("can't parse nmea : %s, %v", strBuf, err)
@@ -180,7 +181,7 @@ func (g *I2CNMEAMovementSensor) Position(ctx context.Context, extra map[string]i
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 
-	currentPosition := g.data.location
+	currentPosition := g.data.Location
 
 	if currentPosition == nil {
 		return lastPosition, 0, errNilLocation
@@ -188,7 +189,7 @@ func (g *I2CNMEAMovementSensor) Position(ctx context.Context, extra map[string]i
 
 	// if current position is (0,0) we will return the last non zero position
 	if g.lastposition.IsZeroPosition(currentPosition) && !g.lastposition.IsZeroPosition(lastPosition) {
-		return lastPosition, g.data.alt, g.err.Get()
+		return lastPosition, g.data.Alt, g.err.Get()
 	}
 
 	// updating lastposition if it is different from the current position
@@ -201,21 +202,21 @@ func (g *I2CNMEAMovementSensor) Position(ctx context.Context, extra map[string]i
 		g.lastposition.SetLastPosition(currentPosition)
 	}
 
-	return currentPosition, g.data.alt, g.err.Get()
+	return currentPosition, g.data.Alt, g.err.Get()
 }
 
 // Accuracy returns the accuracy, hDOP and vDOP.
 func (g *I2CNMEAMovementSensor) Accuracy(ctx context.Context, extra map[string]interface{}) (map[string]float32, error) {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
-	return map[string]float32{"hDOP": float32(g.data.hDOP), "vDOP": float32(g.data.vDOP)}, g.err.Get()
+	return map[string]float32{"hDOP": float32(g.data.HDOP), "vDOP": float32(g.data.VDOP)}, g.err.Get()
 }
 
 // LinearVelocity returns the current speed of the MovementSensor.
 func (g *I2CNMEAMovementSensor) LinearVelocity(ctx context.Context, extra map[string]interface{}) (r3.Vector, error) {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
-	return r3.Vector{X: 0, Y: g.data.speed, Z: 0}, g.err.Get()
+	return r3.Vector{X: 0, Y: g.data.Speed, Z: 0}, g.err.Get()
 }
 
 // LinearAcceleration returns the current linear acceleration of the MovementSensor.
@@ -261,7 +262,7 @@ func (g *I2CNMEAMovementSensor) Properties(ctx context.Context, extra map[string
 func (g *I2CNMEAMovementSensor) ReadFix(ctx context.Context) (int, error) {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
-	return g.data.fixQuality, g.err.Get()
+	return g.data.FixQuality, g.err.Get()
 }
 
 // Readings will use return all of the MovementSensor Readings.
@@ -287,22 +288,4 @@ func (g *I2CNMEAMovementSensor) Close(ctx context.Context) error {
 	g.activeBackgroundWorkers.Wait()
 
 	return g.err.Get()
-}
-
-// PMTK checksums commands by XORing together each byte.
-func addChk(data []byte) []byte {
-	chk := checksum(data)
-	newCmd := []byte("$")
-	newCmd = append(newCmd, data...)
-	newCmd = append(newCmd, []byte("*")...)
-	newCmd = append(newCmd, chk)
-	return newCmd
-}
-
-func checksum(data []byte) byte {
-	var chk byte
-	for _, b := range data {
-		chk ^= b
-	}
-	return chk
 }

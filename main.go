@@ -3,9 +3,10 @@ package main
 
 import (
 	"context"
-	station "rtkstation/correction-station"
-	nmea "rtkstation/gps-nmea"
-	gpsrtkserialnonetwork "rtkstation/gps-rtk-serial-no-network"
+	serialstation "rtksystem/correction-station-serial"
+
+	nmea "rtksystem/gps-nmea"
+	gpsrtkserialnonetwork "rtksystem/gps-rtk-serial-no-network"
 
 	"github.com/edaniels/golog"
 	"go.viam.com/rdk/components/movementsensor"
@@ -24,7 +25,8 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) error
 	if err != nil {
 		return err
 	}
-	rtkSystem.AddModelFromRegistry(ctx, sensor.API, station.StationModel)
+	rtkSystem.AddModelFromRegistry(ctx, sensor.API, serialstation.Model)
+	rtkSystem.AddModelFromRegistry(ctx, sensor.API, i2cstation.Model)
 	rtkSystem.AddModelFromRegistry(ctx, movementsensor.API, gpsrtkserialnonetwork.Model)
 	rtkSystem.AddModelFromRegistry(ctx, movementsensor.API, nmea.Model)
 
