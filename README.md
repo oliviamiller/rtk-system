@@ -1,7 +1,7 @@
 # rtk-system
 
 ## Usage 
-Build a binary nammed rtk-system with:
+Build a binary named rtk-system with:
 
 ```
 go build -o rtk-system
@@ -14,7 +14,7 @@ If you need to build a binary for a different target environment, use the [viam 
 {
   "modules": [
     {
-      "executable_path": "<path-to-binary",
+      "executable_path": "<path-to-binary>",
       "name": "rtk-system"
     }
   ],
