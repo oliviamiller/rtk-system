@@ -134,9 +134,9 @@ func (g *I2CNMEAMovementSensor) Start(ctx context.Context) error {
 
 	// Send GLL, RMC, VTG, GGA, GSA, and GSV sentences each 1000ms
 	baudcmd := fmt.Sprintf("PMTK251,%d", g.wbaud)
-	cmd251 := addChk([]byte(baudcmd))
-	cmd314 := addChk([]byte("PMTK314,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0"))
-	cmd220 := addChk([]byte("PMTK220,1000"))
+	cmd251 := movementsensor.PMTKAddChk([]byte(baudcmd))
+	cmd314 := movementsensor.PMTKAddChk([]byte("PMTK314,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0"))
+	cmd220 := movementsensor.PMTKAddChk([]byte("PMTK220,1000"))
 
 	_, err = i2cBus.WriteBytes(cmd251)
 	if err != nil {
@@ -338,22 +338,4 @@ func (g *I2CNMEAMovementSensor) Close(ctx context.Context) error {
 	g.activeBackgroundWorkers.Wait()
 
 	return g.err.Get()
-}
-
-// PMTK checksums commands by XORing together each byte.
-func addChk(data []byte) []byte {
-	chk := checksum(data)
-	newCmd := []byte("$")
-	newCmd = append(newCmd, data...)
-	newCmd = append(newCmd, []byte("*")...)
-	newCmd = append(newCmd, chk)
-	return newCmd
-}
-
-func checksum(data []byte) byte {
-	var chk byte
-	for _, b := range data {
-		chk ^= b
-	}
-	return chk
 }

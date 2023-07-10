@@ -13,9 +13,8 @@ require (
 	github.com/kellydunn/golang-geo v0.7.0
 	github.com/pkg/errors v0.9.1
 	go.uber.org/multierr v1.11.0
-	go.viam.com/rdk v0.3.0
-	go.viam.com/test v1.1.1-0.20220913152726-5da9916c08a2
-	go.viam.com/utils v0.1.36
+	go.viam.com/rdk v0.4.0-rc0.0.20230710160945-8c1810914ae6
+	go.viam.com/utils v0.1.37
 )
 
 require (
@@ -119,7 +118,8 @@ require (
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/goleak v1.2.1 // indirect
 	go.uber.org/zap v1.24.0 // indirect
-	go.viam.com/api v0.1.132 // indirect
+	go.viam.com/api v0.1.143 // indirect
+	go.viam.com/test v1.1.1-0.20220913152726-5da9916c08a2 // indirect
 	golang.org/x/crypto v0.9.0 // indirect
 	golang.org/x/exp v0.0.0-20230321023759-10a507213a29 // indirect
 	golang.org/x/image v0.7.0 // indirect
