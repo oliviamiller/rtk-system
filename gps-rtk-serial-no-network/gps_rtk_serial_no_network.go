@@ -25,8 +25,8 @@ var Model = resource.NewModel("viam-labs", "movement-sensor", "gps-rtk-serial-no
 const serialStr = "serial"
 
 type Config struct {
-	SerialNMEAPath           string `json:"serial_NMEA_path"`
-	SerialNMEABaudRate       int    `json:"serial__NMEA_baud_rate,omitempty"`
+	SerialNMEAPath           string `json:"serial_nmea_path"`
+	SerialNMEABaudRate       int    `json:"serial_nmea_baud_rate,omitempty"`
 	SerialCorrectionPath     string `json:"serial_correction_path"`
 	SerialCorrectionBaudRate int    `json:"serial_correction_baud_rate"`
 }
@@ -35,7 +35,7 @@ type Config struct {
 func (cfg *Config) Validate(path string) ([]string, error) {
 	var deps []string
 	if cfg.SerialNMEAPath == "" {
-		return nil, utils.NewConfigValidationFieldRequiredError(path, "serial_NMEA_path")
+		return nil, utils.NewConfigValidationFieldRequiredError(path, "serial_nmea_path")
 	}
 	if cfg.SerialCorrectionPath == "" {
 		return nil, utils.NewConfigValidationFieldRequiredError(path, "serial_correction_path")
