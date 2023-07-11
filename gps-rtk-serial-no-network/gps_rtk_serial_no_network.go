@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"math"
-	nmea "rtksystem/gps-nmea"
 	"sync"
 
 	"github.com/edaniels/golog"
@@ -15,12 +14,14 @@ import (
 	slib "github.com/jacobsa/go-serial/serial"
 	geo "github.com/kellydunn/golang-geo"
 	"go.viam.com/rdk/components/movementsensor"
+	"go.viam.com/rdk/components/movementsensor/gpsnmea"
 	"go.viam.com/rdk/resource"
 	"go.viam.com/rdk/spatialmath"
 	"go.viam.com/utils"
 )
 
 var Model = resource.NewModel("viam-labs", "movement-sensor", "gps-rtk-serial-no-network")
+var errNilLocation = errors.New("nil gps location, check nmea message parsing")
 
 const serialStr = "serial"
 
@@ -76,7 +77,9 @@ type rtkSerialNoNetwork struct {
 	err          movementsensor.LastError
 	lastposition movementsensor.LastPosition
 
-	nmeamovementsensor nmea.NmeaMovementSensor
+	data   gpsnmea.GPSData
+	dataMu sync.RWMutex
+
 	correctionWriter   io.ReadWriteCloser
 	correctionReader   io.ReadCloser
 	correctionReaderMu sync.Mutex
@@ -106,18 +109,6 @@ func newrtkSerialNoNetwork(
 		lastposition: movementsensor.NewLastPosition(),
 	}
 
-	nmeaConf := &nmea.Config{
-		ConnectionType: serialStr,
-	}
-
-	// Init NMEAMovementSensor
-	nmeaConf.SerialConfig = &nmea.SerialConfig{SerialPath: newConf.SerialNMEAPath, SerialBaudRate: newConf.SerialNMEABaudRate}
-	var err error
-	g.nmeamovementsensor, err = nmea.NewSerialGPSNMEA(ctx, name, nmeaConf, logger)
-	if err != nil {
-		return nil, err
-	}
-
 	g.writePath = newConf.SerialNMEAPath
 	g.writeBaudRate = newConf.SerialNMEABaudRate
 
@@ -141,7 +132,7 @@ func newrtkSerialNoNetwork(
 
 // Start begins reading the nmea data and correction source readings
 func (g *rtkSerialNoNetwork) start() error {
-	if err := g.nmeamovementsensor.Start(g.cancelCtx); err != nil {
+	if err := g.startGPSNMEA(g.cancelCtx); err != nil {
 		g.lastposition.GetLastPosition()
 		return err
 	}
@@ -149,6 +140,67 @@ func (g *rtkSerialNoNetwork) start() error {
 	utils.PanicCapturingGo(g.receiveAndWriteSerial)
 
 	return g.err.Get()
+}
+
+// Start begins reading nmea messages from module and updates gps data.
+func (g *rtkSerialNoNetwork) startGPSNMEA(ctx context.Context) error {
+	g.activeBackgroundWorkers.Add(1)
+	utils.PanicCapturingGo(func() {
+		defer g.activeBackgroundWorkers.Done()
+		r := bufio.NewReader(g.getCorrectionWriter())
+		for {
+			select {
+			case <-g.cancelCtx.Done():
+				return
+			default:
+			}
+
+			line, err := r.ReadString('\n')
+			if err != nil {
+				g.logger.Errorf("can't read gps serial %s", err)
+				g.err.Set(err)
+				return
+			}
+			// Update our struct's gps data in-place
+			g.dataMu.Lock()
+			err = g.data.ParseAndUpdate(line)
+			g.dataMu.Unlock()
+			if err != nil {
+				g.logger.Warnf("can't parse nmea sentence: %#v", err)
+			}
+		}
+	})
+
+	return g.err.Get()
+}
+
+func (g *rtkSerialNoNetwork) getCorrectionWriter() io.ReadWriteCloser {
+
+	if err := g.cancelCtx.Err(); err != nil {
+		return nil
+	}
+
+	g.correctionReaderMu.Lock()
+	defer g.correctionReaderMu.Unlock()
+
+	options := slib.OpenOptions{
+		PortName:        g.writePath,
+		BaudRate:        uint(g.writeBaudRate),
+		DataBits:        8,
+		StopBits:        1,
+		MinimumReadSize: 1,
+	}
+
+	var err error
+	g.correctionWriter, err = slib.Open(options)
+	if err != nil {
+		g.logger.Errorf("serial.Open: %v", err)
+		g.err.Set(err)
+		return nil
+	}
+
+	return g.correctionWriter
+
 }
 
 func (g *rtkSerialNoNetwork) getCorrectionReader() io.ReadCloser {
@@ -189,25 +241,7 @@ func (g *rtkSerialNoNetwork) receiveAndWriteSerial() {
 
 	reader := g.getCorrectionReader()
 
-	options := slib.OpenOptions{
-		PortName:        g.writePath,
-		BaudRate:        uint(g.writeBaudRate),
-		DataBits:        8,
-		StopBits:        1,
-		MinimumReadSize: 1,
-	}
-
-	// Open the port.
-	if err := g.cancelCtx.Err(); err != nil {
-		return
-	}
-	var err error
-	g.correctionWriter, err = slib.Open(options)
-	if err != nil {
-		g.logger.Errorf("serial.Open: %v", err)
-		g.err.Set(err)
-		return
-	}
+	g.correctionWriter = g.getCorrectionWriter()
 
 	writer := bufio.NewWriter(g.correctionWriter)
 	scanner := rtcm3.NewScanner(reader)
@@ -248,38 +282,39 @@ func (g *rtkSerialNoNetwork) receiveAndWriteSerial() {
 // Position returns the current geographic location of the MOVEMENTSENSOR.
 func (g *rtkSerialNoNetwork) Position(ctx context.Context, extra map[string]interface{}) (*geo.Point, float64, error) {
 	lastError := g.err.Get()
+	lastPosition := g.lastposition.GetLastPosition()
 	if lastError != nil {
-		lastPosition := g.lastposition.GetLastPosition()
 		if lastPosition != nil {
 			return lastPosition, 0, nil
 		}
 		return geo.NewPoint(math.NaN(), math.NaN()), math.NaN(), lastError
 	}
 
-	position, alt, err := g.nmeamovementsensor.Position(ctx, extra)
-	if err != nil {
-		// Use the last known valid position if current position is (0,0)/ NaN.
-		if position != nil && (g.lastposition.IsZeroPosition(position) || g.lastposition.IsPositionNaN(position)) {
-			lastPosition := g.lastposition.GetLastPosition()
-			if lastPosition != nil {
-				return lastPosition, alt, nil
-			}
-		}
-		return geo.NewPoint(math.NaN(), math.NaN()), math.NaN(), err
+	g.dataMu.RLock()
+	defer g.dataMu.RUnlock()
+
+	currentPosition := g.data.Location
+
+	if currentPosition == nil {
+		return lastPosition, 0, errNilLocation
 	}
 
-	// Check if the current position is different from the last position and non-zero
-	lastPosition := g.lastposition.GetLastPosition()
-	if !g.lastposition.ArePointsEqual(position, lastPosition) {
-		g.lastposition.SetLastPosition(position)
+	// if current position is (0,0) we will return the last non zero position
+	if g.lastposition.IsZeroPosition(currentPosition) && !g.lastposition.IsZeroPosition(lastPosition) {
+		return lastPosition, g.data.Alt, g.err.Get()
 	}
 
-	// Update the last known valid position if the current position is non-zero
-	if position != nil && !g.lastposition.IsZeroPosition(position) {
-		g.lastposition.SetLastPosition(position)
+	// updating lastposition if it is different from the current position
+	if !g.lastposition.ArePointsEqual(currentPosition, lastPosition) {
+		g.lastposition.SetLastPosition(currentPosition)
 	}
 
-	return position, alt, nil
+	// updating the last known valid position if the current position is non-zero
+	if !g.lastposition.IsZeroPosition(currentPosition) && !g.lastposition.IsPositionNaN(currentPosition) {
+		g.lastposition.SetLastPosition(currentPosition)
+	}
+
+	return currentPosition, g.data.Alt, g.err.Get()
 }
 
 // LinearVelocity passthrough.
@@ -289,43 +324,37 @@ func (g *rtkSerialNoNetwork) LinearVelocity(ctx context.Context, extra map[strin
 		return r3.Vector{}, lastError
 	}
 
-	return g.nmeamovementsensor.LinearVelocity(ctx, extra)
+	g.dataMu.RLock()
+	defer g.dataMu.RUnlock()
+	return r3.Vector{X: 0, Y: g.data.Speed, Z: 0}, g.err.Get()
 }
 
-// LinearAcceleration passthrough.
+// LinearAcceleration not supported.
 func (g *rtkSerialNoNetwork) LinearAcceleration(ctx context.Context, extra map[string]interface{}) (r3.Vector, error) {
-	lastError := g.err.Get()
-	if lastError != nil {
-		return r3.Vector{}, lastError
-	}
+	g.dataMu.RLock()
+	defer g.dataMu.RUnlock()
 	return r3.Vector{}, nil
 }
 
-// AngularVelocity passthrough.
+// AngularVelocity not supportd.
 func (g *rtkSerialNoNetwork) AngularVelocity(ctx context.Context, extra map[string]interface{}) (spatialmath.AngularVelocity, error) {
-	lastError := g.err.Get()
-	if lastError != nil {
-		return spatialmath.AngularVelocity{}, lastError
-	}
+	g.dataMu.RLock()
+	defer g.dataMu.RUnlock()
 
 	return spatialmath.AngularVelocity{}, nil
 }
 
-// CompassHeading passthrough.
+// CompassHeading not supported.
 func (g *rtkSerialNoNetwork) CompassHeading(ctx context.Context, extra map[string]interface{}) (float64, error) {
-	lastError := g.err.Get()
-	if lastError != nil {
-		return 0, lastError
-	}
-	return 0, nil
+	g.dataMu.RLock()
+	defer g.dataMu.RUnlock()
+	return 0, g.err.Get()
 }
 
-// Orientation passthrough.
+// Orientation not supported.
 func (g *rtkSerialNoNetwork) Orientation(ctx context.Context, extra map[string]interface{}) (spatialmath.Orientation, error) {
-	lastError := g.err.Get()
-	if lastError != nil {
-		return spatialmath.NewZeroOrientation(), lastError
-	}
+	g.dataMu.RLock()
+	defer g.dataMu.RUnlock()
 	return spatialmath.NewZeroOrientation(), nil
 }
 
@@ -335,18 +364,17 @@ func (g *rtkSerialNoNetwork) ReadFix(ctx context.Context) (int, error) {
 	if lastError != nil {
 		return 0, lastError
 	}
-
-	return g.nmeamovementsensor.ReadFix(ctx)
+	g.dataMu.RLock()
+	defer g.dataMu.RUnlock()
+	return g.data.FixQuality, g.err.Get()
 }
 
 // Properties passthrough.
 func (g *rtkSerialNoNetwork) Properties(ctx context.Context, extra map[string]interface{}) (*movementsensor.Properties, error) {
-	lastError := g.err.Get()
-	if lastError != nil {
-		return &movementsensor.Properties{}, lastError
-	}
-
-	return g.nmeamovementsensor.Properties(ctx, extra)
+	return &movementsensor.Properties{
+		LinearVelocitySupported: true,
+		PositionSupported:       true,
+	}, nil
 }
 
 // Accuracy passthrough.
@@ -356,7 +384,9 @@ func (g *rtkSerialNoNetwork) Accuracy(ctx context.Context, extra map[string]inte
 		return map[string]float32{}, lastError
 	}
 
-	return g.nmeamovementsensor.Accuracy(ctx, extra)
+	g.dataMu.RLock()
+	defer g.dataMu.RUnlock()
+	return map[string]float32{"hDOP": float32(g.data.HDOP), "vDOP": float32(g.data.VDOP)}, g.err.Get()
 }
 
 // Readings will use the default MovementSensor Readings if not provided.
@@ -377,10 +407,6 @@ func (g *rtkSerialNoNetwork) Readings(ctx context.Context, extra map[string]inte
 // Close shuts down the RTKSerialNoNetwork.
 func (g *rtkSerialNoNetwork) Close(ctx context.Context) error {
 	g.cancelFunc()
-
-	if err := g.nmeamovementsensor.Close(ctx); err != nil {
-		return err
-	}
 
 	g.correctionReaderMu.Lock()
 

@@ -3,23 +3,25 @@ package gpsrtki2c
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"sync"
 
 	"github.com/d2r2/go-i2c"
 	"github.com/d2r2/go-logger"
+	gologger "github.com/d2r2/go-logger"
 	"github.com/edaniels/golog"
 	"github.com/golang/geo/r3"
 	geo "github.com/kellydunn/golang-geo"
 	"go.viam.com/utils"
 
-	nmea "rtksystem/gps-nmea"
-
 	"go.viam.com/rdk/components/movementsensor"
+	"go.viam.com/rdk/components/movementsensor/gpsnmea"
 	"go.viam.com/rdk/resource"
 	"go.viam.com/rdk/spatialmath"
 )
 
+var errNilLocation = errors.New("nil gps location, check nmea message parsing")
 var Model = resource.NewModel("viam-labs", "movement-sensor", "gps-rtk-i2c-no-network")
 
 const i2cStr = "i2c"
@@ -78,7 +80,8 @@ type RTKI2CNoNetwork struct {
 	err          movementsensor.LastError
 	lastposition movementsensor.LastPosition
 
-	Nmeamovementsensor nmea.NmeaMovementSensor
+	data gpsnmea.GPSData
+	mu   sync.RWMutex
 
 	bus       int
 	wbaud     int
@@ -111,14 +114,6 @@ func newRTKI2CNoNetwork(
 		g.logger.Info("using default baud rate 38400")
 	}
 
-	// Init NMEAMovementSensor
-	I2CConfig := nmea.I2CConfig{I2CBus: newConf.I2CBus, I2cAddr: newConf.NMEAAddr}
-	var err error
-	nmeaConf := &nmea.Config{ConnectionType: i2cStr, I2CConfig: &I2CConfig}
-	g.Nmeamovementsensor, err = nmea.NewI2CGPSNMEA(ctx, deps, name, nmeaConf, logger)
-	if err != nil {
-		return nil, err
-	}
 	g.wbaud = newConf.I2CBaudRate
 	g.readAddr = byte(newConf.RCTMAddr)
 	g.writeAddr = byte(newConf.NMEAAddr)
@@ -132,13 +127,117 @@ func newRTKI2CNoNetwork(
 
 // Start begins the background task to recieve and write I2C.
 func (g *RTKI2CNoNetwork) start() error {
-	if err := g.Nmeamovementsensor.Start(g.cancelCtx); err != nil {
+	if err := g.startGPSNMEA(g.cancelCtx); err != nil {
 		g.lastposition.GetLastPosition()
 		return err
 	}
 
 	g.activeBackgroundWorkers.Add(1)
 	utils.PanicCapturingGo(func() { g.receiveAndWriteI2C(g.cancelCtx) })
+
+	return g.err.Get()
+}
+
+// start begins reading nmea messages from module and updates gps data.
+func (g *RTKI2CNoNetwork) startGPSNMEA(ctx context.Context) error {
+
+	// create i2c connection
+	i2cBus, err := i2c.NewI2C(g.writeAddr, g.bus)
+	if err != nil {
+		g.logger.Errorf("error opening the i2c bus: %v", err)
+		g.err.Set(err)
+	}
+
+	// change so you don't see a million logs
+	gologger.ChangePackageLogLevel("i2c", gologger.InfoLevel)
+
+	// Send GLL, RMC, VTG, GGA, GSA, and GSV sentences each 1000ms
+	baudcmd := fmt.Sprintf("PMTK251,%d", g.wbaud)
+	cmd251 := movementsensor.PMTKAddChk([]byte(baudcmd))
+	cmd314 := movementsensor.PMTKAddChk([]byte("PMTK314,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0"))
+	cmd220 := movementsensor.PMTKAddChk([]byte("PMTK220,1000"))
+
+	_, err = i2cBus.WriteBytes(cmd251)
+	if err != nil {
+		g.logger.Debug("Failed to set baud rate")
+	}
+	_, err = i2cBus.WriteBytes(cmd314)
+	if err != nil {
+		g.logger.Errorf("i2c handle write failed %s", err)
+		return err
+	}
+	_, err = i2cBus.WriteBytes(cmd220)
+	if err != nil {
+		g.logger.Errorf("i2c handle write failed %s", err)
+		return err
+	}
+	err = i2cBus.Close()
+	if err != nil {
+		g.logger.Errorf("failed to close handle: %s", err)
+		return err
+	}
+
+	g.activeBackgroundWorkers.Add(1)
+	utils.PanicCapturingGo(func() {
+		defer g.activeBackgroundWorkers.Done()
+		strBuf := ""
+		for {
+			select {
+			case <-g.cancelCtx.Done():
+				return
+			default:
+			}
+			// Opening an i2c handle blocks the whole bus, so we open/close each loop so other things also have a chance to use it
+			// create i2c connection
+			i2cBus, err := i2c.NewI2C(g.writeAddr, g.bus)
+			if err != nil {
+				g.logger.Errorf("error opening the i2c bus: %v", err)
+				g.err.Set(err)
+			}
+
+			// change so you don't see a million logs
+			gologger.ChangePackageLogLevel("i2c", gologger.InfoLevel)
+
+			// Record the error value no matter what. If it's nil, this will help suppress
+			// ephemeral errors later.
+			g.err.Set(err)
+			if err != nil {
+				g.logger.Errorf("can't open gps i2c handle: %s", err)
+				return
+			}
+			buffer := make([]byte, 1024)
+			_, err = i2cBus.ReadBytes(buffer)
+			g.err.Set(err)
+			hErr := i2cBus.Close()
+			g.err.Set(hErr)
+			if hErr != nil {
+				g.logger.Errorf("failed to close the i2c bus: %s", hErr)
+				return
+			}
+			if err != nil {
+				g.logger.Error(err)
+				continue
+			}
+			for _, b := range buffer {
+				// PMTK uses CRLF line endings to terminate sentences, but just LF to blank data.
+				// Since CR should never appear except at the end of our sentence, we use that to determine sentence end.
+				// LF is merely ignored.
+				if b == 0x0D {
+					if strBuf != "" {
+						g.mu.Lock()
+						err = g.data.ParseAndUpdate(strBuf)
+						g.mu.Unlock()
+						if err != nil {
+							g.logger.Debugf("can't parse nmea : %s, %v", strBuf, err)
+						}
+					}
+					strBuf = ""
+				} else if b != 0x0A && b != 0xFF { // adds only valid bytes
+					strBuf += string(b)
+				}
+			}
+		}
+	})
 
 	return g.err.Get()
 }
@@ -220,30 +319,33 @@ func (g *RTKI2CNoNetwork) Position(ctx context.Context, extra map[string]interfa
 		return geo.NewPoint(math.NaN(), math.NaN()), math.NaN(), lastError
 	}
 
-	position, alt, err := g.Nmeamovementsensor.Position(ctx, extra)
-	if err != nil {
-		// Use the last known valid position if current position is (0,0)/ NaN.
-		if position != nil && (g.lastposition.IsZeroPosition(position) || g.lastposition.IsPositionNaN(position)) {
-			lastPosition := g.lastposition.GetLastPosition()
-			if lastPosition != nil {
-				return lastPosition, alt, nil
-			}
-		}
-		return geo.NewPoint(math.NaN(), math.NaN()), math.NaN(), err
-	}
-
-	// Check if the current position is different from the last position and non-zero
 	lastPosition := g.lastposition.GetLastPosition()
-	if !g.lastposition.ArePointsEqual(position, lastPosition) {
-		g.lastposition.SetLastPosition(position)
+
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	currentPosition := g.data.Location
+
+	if currentPosition == nil {
+		return lastPosition, 0, errNilLocation
 	}
 
-	// Update the last known valid position if the current position is non-zero
-	if position != nil && !g.lastposition.IsZeroPosition(position) {
-		g.lastposition.SetLastPosition(position)
+	// if current position is (0,0) we will return the last non zero position
+	if g.lastposition.IsZeroPosition(currentPosition) && !g.lastposition.IsZeroPosition(lastPosition) {
+		return lastPosition, g.data.Alt, g.err.Get()
 	}
 
-	return position, alt, nil
+	// updating lastposition if it is different from the current position
+	if !g.lastposition.ArePointsEqual(currentPosition, lastPosition) {
+		g.lastposition.SetLastPosition(currentPosition)
+	}
+
+	// updating the last known valid position if the current position is non-zero
+	if !g.lastposition.IsZeroPosition(currentPosition) && !g.lastposition.IsPositionNaN(currentPosition) {
+		g.lastposition.SetLastPosition(currentPosition)
+	}
+
+	return currentPosition, g.data.Alt, g.err.Get()
 }
 
 // LinearVelocity passthrough.
@@ -253,46 +355,38 @@ func (g *RTKI2CNoNetwork) LinearVelocity(ctx context.Context, extra map[string]i
 		return r3.Vector{}, lastError
 	}
 
-	return g.Nmeamovementsensor.LinearVelocity(ctx, extra)
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return r3.Vector{X: 0, Y: g.data.Speed, Z: 0}, g.err.Get()
 }
 
-// LinearAcceleration passthrough.
+// LinearAcceleration not supported.
 func (g *RTKI2CNoNetwork) LinearAcceleration(ctx context.Context, extra map[string]interface{}) (r3.Vector, error) {
-	lastError := g.err.Get()
-	if lastError != nil {
-		return r3.Vector{}, lastError
-	}
-	return g.Nmeamovementsensor.LinearAcceleration(ctx, extra)
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return r3.Vector{}, movementsensor.ErrMethodUnimplementedAngularVelocity
+
 }
 
-// AngularVelocity passthrough.
+// AngularVelocity not supported.
 func (g *RTKI2CNoNetwork) AngularVelocity(ctx context.Context, extra map[string]interface{}) (spatialmath.AngularVelocity, error) {
-	lastError := g.err.Get()
-	if lastError != nil {
-		return spatialmath.AngularVelocity{}, lastError
-	}
-
-	return g.Nmeamovementsensor.AngularVelocity(ctx, extra)
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return spatialmath.AngularVelocity{}, movementsensor.ErrMethodUnimplementedAngularVelocity
 }
 
-// CompassHeading passthrough.
+// CompassHeading not supported.
 func (g *RTKI2CNoNetwork) CompassHeading(ctx context.Context, extra map[string]interface{}) (float64, error) {
-	lastError := g.err.Get()
-	if lastError != nil {
-		return 0, lastError
-	}
-
-	return g.Nmeamovementsensor.CompassHeading(ctx, extra)
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return 0, g.err.Get()
 }
 
-// Orientation passthrough.
+// Orientation not supported.
 func (g *RTKI2CNoNetwork) Orientation(ctx context.Context, extra map[string]interface{}) (spatialmath.Orientation, error) {
-	lastError := g.err.Get()
-	if lastError != nil {
-		return spatialmath.NewZeroOrientation(), lastError
-	}
-
-	return g.Nmeamovementsensor.Orientation(ctx, extra)
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return nil, movementsensor.ErrMethodUnimplementedOrientation
 }
 
 // ReadFix passthrough.
@@ -302,17 +396,17 @@ func (g *RTKI2CNoNetwork) ReadFix(ctx context.Context) (int, error) {
 		return 0, lastError
 	}
 
-	return g.Nmeamovementsensor.ReadFix(ctx)
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.data.FixQuality, g.err.Get()
 }
 
 // Properties passthrough.
 func (g *RTKI2CNoNetwork) Properties(ctx context.Context, extra map[string]interface{}) (*movementsensor.Properties, error) {
-	lastError := g.err.Get()
-	if lastError != nil {
-		return &movementsensor.Properties{}, lastError
-	}
-
-	return g.Nmeamovementsensor.Properties(ctx, extra)
+	return &movementsensor.Properties{
+		LinearVelocitySupported: true,
+		PositionSupported:       true,
+	}, nil
 }
 
 // Accuracy passthrough.
@@ -322,22 +416,18 @@ func (g *RTKI2CNoNetwork) Accuracy(ctx context.Context, extra map[string]interfa
 		return map[string]float32{}, lastError
 	}
 
-	return g.Nmeamovementsensor.Accuracy(ctx, extra)
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return map[string]float32{"hDOP": float32(g.data.HDOP), "vDOP": float32(g.data.VDOP)}, g.err.Get()
 }
 
 // Readings will use the default MovementSensor Readings if not provided.
 func (g *RTKI2CNoNetwork) Readings(ctx context.Context, extra map[string]interface{}) (map[string]interface{}, error) {
 	readings, err := movementsensor.Readings(ctx, g, extra)
+
 	if err != nil {
 		return nil, err
 	}
-
-	fix, err := g.ReadFix(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	readings["fix"] = fix
 
 	return readings, nil
 }
@@ -352,10 +442,6 @@ func (g *RTKI2CNoNetwork) Close(ctx context.Context) error {
 	}
 
 	if err := g.readI2c.Close(); err != nil {
-		return err
-	}
-
-	if err := g.Nmeamovementsensor.Close(ctx); err != nil {
 		return err
 	}
 
