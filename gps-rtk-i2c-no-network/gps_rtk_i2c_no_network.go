@@ -24,8 +24,6 @@ import (
 var errNilLocation = errors.New("nil gps location, check nmea message parsing")
 var Model = resource.NewModel("viam-labs", "movement-sensor", "gps-rtk-i2c-no-network")
 
-const i2cStr = "i2c"
-
 type Config struct {
 	I2CBus      int `json:"i2c_bus"`
 	NMEAAddr    int `json:"nmea_i2c_addr"`

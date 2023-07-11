@@ -37,6 +37,8 @@ const (
 
 	svinModeEnable  = 0x01
 	svinModeDisable = 0x00
+
+	timeMode = "time"
 )
 
 var rtcmMsgs = map[int]int{

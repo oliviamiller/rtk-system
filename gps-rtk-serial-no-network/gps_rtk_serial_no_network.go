@@ -23,8 +23,6 @@ import (
 var Model = resource.NewModel("viam-labs", "movement-sensor", "gps-rtk-serial-no-network")
 var errNilLocation = errors.New("nil gps location, check nmea message parsing")
 
-const serialStr = "serial"
-
 type Config struct {
 	SerialNMEAPath           string `json:"serial_nmea_path"`
 	SerialNMEABaudRate       int    `json:"serial_nmea_baud_rate,omitempty"`
