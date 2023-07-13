@@ -377,7 +377,7 @@ func (g *RTKI2CNoNetwork) LinearVelocity(ctx context.Context, extra map[string]i
 func (g *RTKI2CNoNetwork) LinearAcceleration(ctx context.Context, extra map[string]interface{}) (r3.Vector, error) {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
-	return r3.Vector{}, movementsensor.ErrMethodUnimplementedAngularVelocity
+	return r3.Vector{}, movementsensor.ErrMethodUnimplementedLinearAcceleration
 
 }
 
@@ -392,7 +392,7 @@ func (g *RTKI2CNoNetwork) AngularVelocity(ctx context.Context, extra map[string]
 func (g *RTKI2CNoNetwork) CompassHeading(ctx context.Context, extra map[string]interface{}) (float64, error) {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
-	return 0, g.err.Get()
+	return 0, movementsensor.ErrMethodUnimplementedCompassHeading
 }
 
 // Orientation not supported.
@@ -403,7 +403,7 @@ func (g *RTKI2CNoNetwork) Orientation(ctx context.Context, extra map[string]inte
 }
 
 // ReadFix passthrough.
-func (g *RTKI2CNoNetwork) ReadFix(ctx context.Context) (int, error) {
+func (g *RTKI2CNoNetwork) readFix(ctx context.Context) (int, error) {
 	lastError := g.err.Get()
 	if lastError != nil {
 		return 0, lastError
