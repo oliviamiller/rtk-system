@@ -105,6 +105,12 @@ func (s *i2cCorrectionSource) Close(ctx context.Context) error {
 
 	s.activeBackgroundWorkers.Wait()
 
+	if s.i2cBus != nil {
+		err := s.i2cBus.Close()
+		s.err.Set(err)
+		s.logger.Debug("failed to close i2c handle: %s", err)
+	}
+
 	if err := s.err.Get(); err != nil && !errors.Is(err, context.Canceled) {
 		return err
 	}

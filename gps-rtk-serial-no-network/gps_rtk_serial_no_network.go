@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log"
 	"math"
 	"sync"
 
@@ -119,8 +118,6 @@ func newrtkSerialNoNetwork(
 		newConf.SerialNMEABaudRate = 38400
 	}
 
-	log.Println(newConf.TestChan)
-
 	// Init NMEAMovementSensor
 	nmeaConf.SerialConfig = &gpsnmea.SerialConfig{SerialPath: newConf.SerialNMEAPath, SerialBaudRate: newConf.SerialNMEABaudRate, TestChan: newConf.TestChan}
 	var err error
@@ -128,8 +125,6 @@ func newrtkSerialNoNetwork(
 	if err != nil {
 		return nil, err
 	}
-
-	log.Println("here")
 
 	g.writePath = newConf.SerialNMEAPath
 	g.writeBaudRate = newConf.SerialNMEABaudRate

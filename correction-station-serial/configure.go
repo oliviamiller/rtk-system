@@ -2,7 +2,6 @@ package stationserial
 
 import (
 	"context"
-	"fmt"
 	"io"
 
 	"github.com/jacobsa/go-serial/serial"
@@ -114,9 +113,6 @@ func ConfigureBaseRTKStation(newConf *Config) error {
 func (c *configCommand) serialConfigure(newConf *Config) error {
 
 	portName := newConf.SerialPath
-	if portName == "" {
-		return fmt.Errorf("serialCorrectionSource expected non-empty string for %q", correctionPathName)
-	}
 	c.portName = portName
 
 	baudRate := newConf.SerialBaudRate

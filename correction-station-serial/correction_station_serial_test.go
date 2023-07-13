@@ -1,14 +1,21 @@
 package stationserial
 
 import (
+	"context"
 	"testing"
 
+	"github.com/edaniels/golog"
+	"go.viam.com/rdk/components/movementsensor"
+	"go.viam.com/rdk/resource"
 	"go.viam.com/test"
 	"go.viam.com/utils"
 )
 
-const testPath = "test-path"
-const path = "path"
+const (
+	testPath        = "test-path"
+	path            = "path"
+	testStationName = "serial-station"
+)
 
 func TestValidate(t *testing.T) {
 	tests := []struct {
@@ -72,3 +79,72 @@ func TestValidate(t *testing.T) {
 		})
 	}
 }
+
+func TestNewSerialRTKStation(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+	ctx := context.Background()
+	deps := make(resource.Dependencies)
+
+	c := make(chan []byte, 1024)
+
+	tests := []struct {
+		name         string
+		resourceConf *resource.Config
+		conf         *Config
+		expectedErr  error
+	}{
+		{
+			name: "A valid config should result in no errors",
+			resourceConf: &resource.Config{
+				Name:  testStationName,
+				Model: Model,
+				API:   movementsensor.API,
+			},
+			conf: &Config{
+				RequiredAccuracy: 4,
+				RequiredTime:     200,
+				SerialPath:       testPath,
+				TestChan:         c,
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			g, err := newRTKStationSerial(ctx, deps, tc.resourceConf.ResourceName(), tc.conf, logger)
+			test.That(t, err, test.ShouldBeNil)
+			test.That(t, g.Name(), test.ShouldResemble, tc.resourceConf.ResourceName())
+			err = g.Close(ctx)
+			test.That(t, err, test.ShouldBeNil)
+
+		})
+	}
+}
+
+/* func TestClose(t *testing.T) {
+	logger := golog.NewTestLogger(t)
+	ctx := context.Background()
+	cancelCtx, cancelFunc := context.WithCancel(ctx)
+
+	tests := []struct {
+		name        string
+		baseStation *rtkStationSerial
+		expectedErr error
+	}{
+		{
+			name: "should close with no errors",
+			baseStation: &rtkStationSerial{
+				cancelCtx: cancelCtx, cancelFunc: cancelFunc, logger: logger, correctionSource: &serialCorrectionSource{
+					cancelCtx:  cancelCtx,
+					cancelFunc: cancelFunc,
+					logger:     logger,
+				},
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.baseStation.Close(ctx)
+			test.That(t, err, test.ShouldBeNil)
+		})
+	}
+} */

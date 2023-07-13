@@ -50,6 +50,9 @@ type Config struct {
 	I2CBus      int `json:"i2c_bus"`
 	I2CAddr     int `json:"i2c_addr"`
 	I2CBaudRate int `json:"i2c_baud_rate,omitempty"`
+
+	// TestChan is a fake i2c bus for testing use only
+	TestChan chan []uint8 `json:"-"`
 }
 
 // Validate ensures all parts of the config are valid.
@@ -120,13 +123,13 @@ func newRTKStationI2C(
 
 	err := ConfigureBaseRTKStation(newConf)
 	if err != nil {
-		r.logger.Info("rtk base station could not be configured")
-		return r, err
+		r.logger.Warn("rtk base station could not be configured")
 	}
 
 	// Init correction source
 	r.i2cPath.addr = byte(newConf.I2CAddr)
 	r.i2cPath.bus = newConf.I2CBus
+
 	r.correctionSource, err = newI2CCorrectionSource(deps, newConf, logger)
 	if err != nil {
 		return nil, err
