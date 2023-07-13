@@ -1,5 +1,9 @@
 # rtk-system
 
+Provides functionaliy to set up a rtk base station to send a RTCM correction streams through serial or i2c.
+the rtk-no-network components can be used to recieve the correction data and output locations with up to 1 cm accuracy.
+This module is experimental.
+
 ## Usage 
 Build a binary named rtk-system with:
 
@@ -47,7 +51,7 @@ If you need to build a binary for a different target environment, use the [viam 
       "name": "rover1",
       "type": "movement_sensor",
       "attributes": {
-        "rctm_i2c_addr": 66,
+        "rtcm_i2c_addr": 66,
         "i2c_bus": 1,
         "nmea_i2c_addr": 67
       },
@@ -66,3 +70,8 @@ If you need to build a binary for a different target environment, use the [viam 
   ]
 }
 ```
+
+## Relevant Links
+[SparkFun GPS-RTK ZED-F9P] (https://www.sparkfun.com/products/16481)
+[Configuring a module in viam] (https://docs.viam.com/extend/modular-resources//#configure-your-module)
+

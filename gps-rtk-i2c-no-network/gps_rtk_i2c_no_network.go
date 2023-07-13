@@ -27,7 +27,7 @@ var Model = resource.NewModel("viam-labs", "movement-sensor", "gps-rtk-i2c-no-ne
 type Config struct {
 	I2CBus      int `json:"i2c_bus"`
 	NMEAAddr    int `json:"nmea_i2c_addr"` // address of the rover
-	RCTMAddr    int `json:"rctm_i2c_addr"` // address of the station
+	RTCMAddr    int `json:"rtcm_i2c_addr"` // address of the station
 	I2CBaudRate int `json:"i2c_baud_rate,omitempty"`
 }
 
@@ -39,7 +39,7 @@ func (cfg *Config) Validate(path string) ([]string, error) {
 	if cfg.NMEAAddr == 0 {
 		return nil, utils.NewConfigValidationFieldRequiredError(path, "nmea_i2c_addr")
 	}
-	if cfg.RCTMAddr == 0 {
+	if cfg.RTCMAddr == 0 {
 		return nil, utils.NewConfigValidationFieldRequiredError(path, "rctm_i2c_addr")
 	}
 	return []string{}, nil
@@ -114,7 +114,7 @@ func newRTKI2CNoNetwork(
 	}
 
 	g.wbaud = newConf.I2CBaudRate
-	g.readAddr = byte(newConf.RCTMAddr)
+	g.readAddr = byte(newConf.RTCMAddr)
 	g.writeAddr = byte(newConf.NMEAAddr)
 	g.bus = newConf.I2CBus
 
