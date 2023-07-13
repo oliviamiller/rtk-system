@@ -26,20 +26,20 @@ func TestValidate(t *testing.T) {
 		{
 			name: "A valid config should result in no errors",
 			config: &Config{
-				SerialNMEAPath:       "some-path",
-				SerialCorrectionPath: "some-path2"},
+				SerialNMEAPath:       nmeaPath,
+				SerialCorrectionPath: correctionPath},
 		},
 		{
 			name: "a config with no serial_nmea_path should result in error",
 			config: &Config{
-				SerialCorrectionPath: "some-path2",
+				SerialCorrectionPath: correctionPath,
 			},
 			expectedErr: utils.NewConfigValidationFieldRequiredError(path, "serial_nmea_path"),
 		},
 		{
 			name: "a config with no serial_correction_path should result in error",
 			config: &Config{
-				SerialNMEAPath: "some-path2",
+				SerialNMEAPath: nmeaPath,
 			},
 			expectedErr: utils.NewConfigValidationFieldRequiredError(path, "serial_correction_path"),
 		},
