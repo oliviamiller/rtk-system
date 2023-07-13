@@ -2,16 +2,16 @@
 
 This module is experimental.
 
-** Correction-Station-I2C and Correction-Station-Serial
+**Correction-Station-I2C and Correction-Station-Serial**
 Provides functionaliy to set up a rtk base station to send RTCM correction streams through serial or i2c communication. 
 This can be used for when there is no internet connection or there are no public NTRIP mountpoints nearby.
 The base station should be set up with a clear view of the sky for the best accuracy. In the config, set your desired accuracy (1-5)
 and the time required to configure the base station.
 
 
-** GPS-RTK-I2C-No-Network and GPS-RTK-Serial-No-Network 
+**GPS-RTK-I2C-No-Network and GPS-RTK-Serial-No-Network**
 The rtk-no-network components are on the rovers and recieve the correction data from the station to output locations with up to 1 cm accuracy.
-A radio or bluetooth module using one of the supported communication protocols can be used to communicate between the correction station and the rovers.
+A radio or bluetooth module using one of the supported communication protocols can be used to communicate between the correction station and the rovers. 
 
 
 ## Usage 
@@ -82,7 +82,7 @@ If you need to build a binary for a different target environment, use the [viam 
 ```
 
 ## Relevant Links
-[SparkFun GPS-RTK ZED-F9P] (https://www.sparkfun.com/products/16481) <br />
-[Configuring a module in viam] (https://docs.viam.com/extend/modular-resources//#configure-your-module) <br /> 
-[Setting up your own base station] (https://learn.sparkfun.com/tutorials/setting-up-a-rover-base-rtk-system/all)
+[SparkFun GPS-RTK ZED-F9P](https://www.sparkfun.com/products/16481) <br />
+[Configuring a module in viam](https://docs.viam.com/extend/modular-resources//#configure-your-module) <br /> 
+[Setting up your own base station](https://learn.sparkfun.com/tutorials/setting-up-a-rover-base-rtk-system/all)
 
