@@ -1,7 +1,7 @@
 # rtk-system
 
 Provides functionaliy to set up a rtk base station to send a RTCM correction streams through serial or i2c.
-the rtk-no-network components can be used to recieve the correction data and output locations with up to 1 cm accuracy.
+The rtk-no-network components can be used to recieve the correction data and output locations with up to 1 cm accuracy.
 This module is experimental.
 
 ## Usage 
@@ -72,6 +72,6 @@ If you need to build a binary for a different target environment, use the [viam 
 ```
 
 ## Relevant Links
-[SparkFun GPS-RTK ZED-F9P] (https://www.sparkfun.com/products/16481)
+[SparkFun GPS-RTK ZED-F9P] (https://www.sparkfun.com/products/16481) <br />
 [Configuring a module in viam] (https://docs.viam.com/extend/modular-resources//#configure-your-module)
 
