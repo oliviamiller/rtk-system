@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log"
 	"math"
 	"sync"
 
@@ -118,8 +117,8 @@ func newrtkSerialNoNetwork(
 	g.readPath = newConf.SerialCorrectionPath
 	g.readBaudRate = newConf.SerialCorrectionBaudRate
 
-	if g.writeBaudRate == 0 {
-		g.writeBaudRate = 38400
+	if g.readBaudRate == 0 {
+		g.readBaudRate = 38400
 	}
 
 	if err := g.start(); err != nil {
@@ -145,35 +144,39 @@ func (g *rtkSerialNoNetwork) start() error {
 func (g *rtkSerialNoNetwork) startGPSNMEA(ctx context.Context) error {
 	g.activeBackgroundWorkers.Add(1)
 	utils.PanicCapturingGo(func() {
-		defer g.activeBackgroundWorkers.Done()
-		r := bufio.NewReader(g.getCorrectionWriter())
-		for {
-			select {
-			case <-g.cancelCtx.Done():
-				return
-			default:
-			}
-
-			line, err := r.ReadString('\n')
-			if err != nil {
-				g.logger.Errorf("can't read gps serial %s", err)
-				g.err.Set(err)
-				return
-			}
-			// Update our struct's gps data in-place
-			g.dataMu.Lock()
-			err = g.data.ParseAndUpdate(line)
-			g.dataMu.Unlock()
-			if err != nil {
-				g.logger.Warnf("can't parse nmea sentence: %#v", err)
-			}
-		}
+		g.readNMEAMessages(ctx)
 	})
 
 	return g.err.Get()
 }
 
-func (g *rtkSerialNoNetwork) getCorrectionWriter() io.ReadWriteCloser {
+func (g *rtkSerialNoNetwork) readNMEAMessages(ctx context.Context) {
+	defer g.activeBackgroundWorkers.Done()
+	r := bufio.NewReader(g.openNMEAPath())
+	for {
+		select {
+		case <-g.cancelCtx.Done():
+			return
+		default:
+		}
+
+		line, err := r.ReadString('\n')
+		if err != nil {
+			g.logger.Errorf("can't read gps serial %s", err)
+			g.err.Set(err)
+			return
+		}
+		// Update our struct's gps data in-place
+		g.dataMu.Lock()
+		err = g.data.ParseAndUpdate(line)
+		g.dataMu.Unlock()
+		if err != nil {
+			g.logger.Warnf("can't parse nmea sentence: %#v", err)
+		}
+	}
+}
+
+func (g *rtkSerialNoNetwork) openNMEAPath() io.ReadWriteCloser {
 
 	if err := g.cancelCtx.Err(); err != nil {
 		return nil
@@ -202,7 +205,7 @@ func (g *rtkSerialNoNetwork) getCorrectionWriter() io.ReadWriteCloser {
 
 }
 
-func (g *rtkSerialNoNetwork) getCorrectionReader() io.ReadCloser {
+func (g *rtkSerialNoNetwork) openCorrectionReader() io.ReadCloser {
 
 	if err := g.cancelCtx.Err(); err != nil {
 		return nil
@@ -238,9 +241,9 @@ func (g *rtkSerialNoNetwork) receiveAndWriteSerial() {
 		return
 	}
 
-	reader := g.getCorrectionReader()
+	reader := g.openCorrectionReader()
 
-	g.correctionWriter = g.getCorrectionWriter()
+	g.correctionWriter = g.openNMEAPath()
 
 	writer := bufio.NewWriter(g.correctionWriter)
 	scanner := rtcm3.NewScanner(reader)
@@ -390,7 +393,6 @@ func (g *rtkSerialNoNetwork) Accuracy(ctx context.Context, extra map[string]inte
 
 // Readings will use the default MovementSensor Readings if not provided.
 func (g *rtkSerialNoNetwork) Readings(ctx context.Context, extra map[string]interface{}) (map[string]interface{}, error) {
-	log.Println("rtk serial readings")
 	readings := make(map[string]interface{})
 
 	fix, err := g.readFix(ctx)

@@ -142,7 +142,7 @@ func (g *RTKI2CNoNetwork) startGPSNMEA(ctx context.Context) error {
 
 	err := g.initializeI2C(ctx)
 	if err != nil {
-		g.logger.Errorf("error starting NMEA %v", err)
+		g.logger.Errorf("error initializing i2c %v", err)
 		g.err.Set(err)
 	}
 
