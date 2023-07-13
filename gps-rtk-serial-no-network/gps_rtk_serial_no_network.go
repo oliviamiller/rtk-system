@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log"
 	"math"
 	"sync"
 
@@ -24,9 +25,9 @@ var Model = resource.NewModel("viam-labs", "movement-sensor", "gps-rtk-serial-no
 var errNilLocation = errors.New("nil gps location, check nmea message parsing")
 
 type Config struct {
-	SerialNMEAPath           string `json:"serial_nmea_path"`
+	SerialNMEAPath           string `json:"serial_nmea_path"` // The path that NMEA data is being written to
 	SerialNMEABaudRate       int    `json:"serial_nmea_baud_rate,omitempty"`
-	SerialCorrectionPath     string `json:"serial_correction_path"`
+	SerialCorrectionPath     string `json:"serial_correction_path"` // The path that rctm data will be read from
 	SerialCorrectionBaudRate int    `json:"serial_correction_baud_rate"`
 }
 
@@ -331,7 +332,7 @@ func (g *rtkSerialNoNetwork) LinearVelocity(ctx context.Context, extra map[strin
 func (g *rtkSerialNoNetwork) LinearAcceleration(ctx context.Context, extra map[string]interface{}) (r3.Vector, error) {
 	g.dataMu.RLock()
 	defer g.dataMu.RUnlock()
-	return r3.Vector{}, nil
+	return r3.Vector{}, movementsensor.ErrMethodUnimplementedLinearAcceleration
 }
 
 // AngularVelocity not supportd.
@@ -339,25 +340,25 @@ func (g *rtkSerialNoNetwork) AngularVelocity(ctx context.Context, extra map[stri
 	g.dataMu.RLock()
 	defer g.dataMu.RUnlock()
 
-	return spatialmath.AngularVelocity{}, nil
+	return spatialmath.AngularVelocity{}, movementsensor.ErrMethodUnimplementedAngularVelocity
 }
 
 // CompassHeading not supported.
 func (g *rtkSerialNoNetwork) CompassHeading(ctx context.Context, extra map[string]interface{}) (float64, error) {
 	g.dataMu.RLock()
 	defer g.dataMu.RUnlock()
-	return 0, g.err.Get()
+	return 0, movementsensor.ErrMethodUnimplementedCompassHeading
 }
 
 // Orientation not supported.
 func (g *rtkSerialNoNetwork) Orientation(ctx context.Context, extra map[string]interface{}) (spatialmath.Orientation, error) {
 	g.dataMu.RLock()
 	defer g.dataMu.RUnlock()
-	return spatialmath.NewZeroOrientation(), nil
+	return spatialmath.NewZeroOrientation(), movementsensor.ErrMethodUnimplementedOrientation
 }
 
 // ReadFix passthrough.
-func (g *rtkSerialNoNetwork) ReadFix(ctx context.Context) (int, error) {
+func (g *rtkSerialNoNetwork) readFix(ctx context.Context) (int, error) {
 	lastError := g.err.Get()
 	if lastError != nil {
 		return 0, lastError
@@ -389,10 +390,10 @@ func (g *rtkSerialNoNetwork) Accuracy(ctx context.Context, extra map[string]inte
 
 // Readings will use the default MovementSensor Readings if not provided.
 func (g *rtkSerialNoNetwork) Readings(ctx context.Context, extra map[string]interface{}) (map[string]interface{}, error) {
-
+	log.Println("rtk serial readings")
 	readings := make(map[string]interface{})
 
-	fix, err := g.ReadFix(ctx)
+	fix, err := g.readFix(ctx)
 	if err != nil {
 		return nil, err
 	}

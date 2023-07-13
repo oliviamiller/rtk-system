@@ -26,8 +26,8 @@ var Model = resource.NewModel("viam-labs", "movement-sensor", "gps-rtk-i2c-no-ne
 
 type Config struct {
 	I2CBus      int `json:"i2c_bus"`
-	NMEAAddr    int `json:"nmea_i2c_addr"`
-	RCTMAddr    int `json:"rctm_i2c_addr"`
+	NMEAAddr    int `json:"nmea_i2c_addr"` // address of the rover
+	RCTMAddr    int `json:"rctm_i2c_addr"` // address of the station
 	I2CBaudRate int `json:"i2c_baud_rate,omitempty"`
 }
 
@@ -85,8 +85,9 @@ type RTKI2CNoNetwork struct {
 	wbaud     int
 	readAddr  byte
 	writeAddr byte
-	readI2c   *i2c.I2C
-	writeI2c  *i2c.I2C
+
+	readI2c  *i2c.I2C
+	writeI2c *i2c.I2C
 }
 
 func newRTKI2CNoNetwork(
@@ -139,6 +140,83 @@ func (g *RTKI2CNoNetwork) start() error {
 // start begins reading nmea messages from module and updates gps data.
 func (g *RTKI2CNoNetwork) startGPSNMEA(ctx context.Context) error {
 
+	err := g.initializeI2C(ctx)
+	if err != nil {
+		g.logger.Errorf("error starting NMEA %v", err)
+		g.err.Set(err)
+	}
+
+	g.activeBackgroundWorkers.Add(1)
+	utils.PanicCapturingGo(func() {
+		g.readNMEAMessages(ctx)
+	})
+
+	return g.err.Get()
+}
+
+func (g *RTKI2CNoNetwork) readNMEAMessages(ctx context.Context) {
+	defer g.activeBackgroundWorkers.Done()
+	strBuf := ""
+	for {
+		select {
+		case <-g.cancelCtx.Done():
+			return
+		default:
+		}
+		// open/close each loop so other things also have a chance to use i2c
+		// create i2c connection
+		i2cBus, err := i2c.NewI2C(g.writeAddr, g.bus)
+		if err != nil {
+			g.logger.Errorf("error opening the i2c bus: %v", err)
+			g.err.Set(err)
+		}
+
+		// change so you don't see a million logs
+		gologger.ChangePackageLogLevel("i2c", gologger.InfoLevel)
+
+		// Record the error value no matter what. If it's nil, this will help suppress
+		// ephemeral errors later.
+		g.err.Set(err)
+		if err != nil {
+			g.logger.Errorf("can't open gps i2c handle: %s", err)
+			return
+		}
+		buffer := make([]byte, 1024)
+		_, err = i2cBus.ReadBytes(buffer)
+		g.err.Set(err)
+		hErr := i2cBus.Close()
+		g.err.Set(hErr)
+		if hErr != nil {
+			g.logger.Errorf("failed to close the i2c bus: %s", hErr)
+			return
+		}
+		if err != nil {
+			g.logger.Error(err)
+			continue
+		}
+		for _, b := range buffer {
+			// PMTK uses CRLF line endings to terminate sentences, but just LF to blank data.
+			// Since CR should never appear except at the end of our sentence, we use that to determine sentence end.
+			// LF is merely ignored.
+			if b == 0x0D {
+				if strBuf != "" {
+					g.mu.Lock()
+					err = g.data.ParseAndUpdate(strBuf)
+					g.mu.Unlock()
+					if err != nil {
+						g.logger.Debugf("can't parse nmea : %s, %v", strBuf, err)
+					}
+				}
+				strBuf = ""
+			} else if b != 0x0A && b != 0xFF { // adds only valid bytes
+				strBuf += string(b)
+			}
+		}
+	}
+}
+
+func (g *RTKI2CNoNetwork) initializeI2C(ctx context.Context) error {
+
 	// create i2c connection
 	i2cBus, err := i2c.NewI2C(g.writeAddr, g.bus)
 	if err != nil {
@@ -157,16 +235,16 @@ func (g *RTKI2CNoNetwork) startGPSNMEA(ctx context.Context) error {
 
 	_, err = i2cBus.WriteBytes(cmd251)
 	if err != nil {
-		g.logger.Debug("Failed to set baud rate")
+		g.logger.Errorf("Failed to set baud rate")
 	}
 	_, err = i2cBus.WriteBytes(cmd314)
 	if err != nil {
-		g.logger.Errorf("i2c handle write failed %s", err)
+		g.logger.Errorf("i2c write failed %s", err)
 		return err
 	}
 	_, err = i2cBus.WriteBytes(cmd220)
 	if err != nil {
-		g.logger.Errorf("i2c handle write failed %s", err)
+		g.logger.Errorf("i2c write failed %s", err)
 		return err
 	}
 	err = i2cBus.Close()
@@ -174,70 +252,7 @@ func (g *RTKI2CNoNetwork) startGPSNMEA(ctx context.Context) error {
 		g.logger.Errorf("failed to close handle: %s", err)
 		return err
 	}
-
-	g.activeBackgroundWorkers.Add(1)
-	utils.PanicCapturingGo(func() {
-		defer g.activeBackgroundWorkers.Done()
-		strBuf := ""
-		for {
-			select {
-			case <-g.cancelCtx.Done():
-				return
-			default:
-			}
-			// Opening an i2c handle blocks the whole bus, so we open/close each loop so other things also have a chance to use it
-			// create i2c connection
-			i2cBus, err := i2c.NewI2C(g.writeAddr, g.bus)
-			if err != nil {
-				g.logger.Errorf("error opening the i2c bus: %v", err)
-				g.err.Set(err)
-			}
-
-			// change so you don't see a million logs
-			gologger.ChangePackageLogLevel("i2c", gologger.InfoLevel)
-
-			// Record the error value no matter what. If it's nil, this will help suppress
-			// ephemeral errors later.
-			g.err.Set(err)
-			if err != nil {
-				g.logger.Errorf("can't open gps i2c handle: %s", err)
-				return
-			}
-			buffer := make([]byte, 1024)
-			_, err = i2cBus.ReadBytes(buffer)
-			g.err.Set(err)
-			hErr := i2cBus.Close()
-			g.err.Set(hErr)
-			if hErr != nil {
-				g.logger.Errorf("failed to close the i2c bus: %s", hErr)
-				return
-			}
-			if err != nil {
-				g.logger.Error(err)
-				continue
-			}
-			for _, b := range buffer {
-				// PMTK uses CRLF line endings to terminate sentences, but just LF to blank data.
-				// Since CR should never appear except at the end of our sentence, we use that to determine sentence end.
-				// LF is merely ignored.
-				if b == 0x0D {
-					if strBuf != "" {
-						g.mu.Lock()
-						err = g.data.ParseAndUpdate(strBuf)
-						g.mu.Unlock()
-						if err != nil {
-							g.logger.Debugf("can't parse nmea : %s, %v", strBuf, err)
-						}
-					}
-					strBuf = ""
-				} else if b != 0x0A && b != 0xFF { // adds only valid bytes
-					strBuf += string(b)
-				}
-			}
-		}
-	})
-
-	return g.err.Get()
+	return nil
 }
 
 // receiveAndWriteI2C reads tbe rctm correction messages from the read addr and writes the write addr
