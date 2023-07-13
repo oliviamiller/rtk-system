@@ -2,14 +2,14 @@
 
 This module is experimental.
 
-**Correction-Station-I2C and Correction-Station-Serial**
+**Correction-Station-I2C and Correction-Station-Serial**  <br />
 Provides functionaliy to set up a rtk base station to send RTCM correction streams through serial or i2c communication. 
 This can be used for when there is no internet connection or there are no public NTRIP mountpoints nearby.
 The base station should be set up with a clear view of the sky for the best accuracy. In the config, set your desired accuracy (1-5)
 and the time required to configure the base station.
 
 
-**GPS-RTK-I2C-No-Network and GPS-RTK-Serial-No-Network**
+**GPS-RTK-I2C-No-Network and GPS-RTK-Serial-No-Network**  <br />
 The rtk-no-network components are on the rovers and recieve the correction data from the station to output locations with up to 1 cm accuracy.
 A radio or bluetooth module using one of the supported communication protocols can be used to communicate between the correction station and the rovers. 
 
