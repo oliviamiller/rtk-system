@@ -3,8 +3,9 @@
 This module is experimental.
 
 **Correction-Station-I2C and Correction-Station-Serial**  <br />
-Provides functionaliy to set up a rtk base station to send RTCM correction streams through serial or i2c communication. 
-This can be used for when there is no internet connection or there are no public NTRIP mountpoints nearby.
+Provides functionality to set up a RTCM base station to send RTCM correction streams through serial or i2c communication
+connected to a radio or Bluetooth transmitter. 
+This can be used for when there is no network connection or there are no public or private NTRIP mount points nearby.
 The base station should be set up with a clear view of the sky for the best accuracy. In the config, set your desired accuracy (1-5)
 and the time required to configure the base station.
 
