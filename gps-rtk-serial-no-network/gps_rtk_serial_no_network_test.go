@@ -5,7 +5,9 @@ import (
 	"testing"
 
 	"github.com/edaniels/golog"
+	geo "github.com/kellydunn/golang-geo"
 	"go.viam.com/rdk/components/movementsensor"
+	"go.viam.com/rdk/components/movementsensor/gpsnmea"
 	"go.viam.com/rdk/resource"
 	"go.viam.com/test"
 	"go.viam.com/utils"
@@ -96,15 +98,65 @@ func TestNewrtkSerialNoNetwork(t *testing.T) {
 	}
 }
 
-func TestClose(t *testing.T) {
+func TestPosition(t *testing.T) {
 	logger := golog.NewTestLogger(t)
 	ctx := context.Background()
-	cancelCtx, cancelFunc := context.WithCancel(ctx)
-	g := rtkSerialNoNetwork{
-		cancelCtx:  cancelCtx,
-		cancelFunc: cancelFunc,
-		logger:     logger,
+
+	mockGPSData := gpsnmea.GPSData{
+		Location:   geo.NewPoint(1, 2),
+		Alt:        3,
+		Speed:      4,
+		VDOP:       5,
+		HDOP:       6,
+		SatsInView: 7,
+		SatsInUse:  8,
+		FixQuality: 5,
 	}
-	err := g.Close(ctx)
-	test.That(t, err, test.ShouldBeNil)
+
+	lastPostion := movementsensor.LastPosition{}
+	lastPostion.SetLastPosition(geo.NewPoint(2, 1))
+
+	rtk := &rtkSerialNoNetwork{
+		logger:    logger,
+		cancelCtx: ctx,
+		data:      mockGPSData,
+	}
+
+	tests := []struct {
+		name          string
+		location      *geo.Point
+		validLocation bool
+	}{
+		{
+			name:          "should return the current postion",
+			location:      geo.NewPoint(1, 2),
+			validLocation: true,
+		},
+		{
+			name:          "if the current location is zero should return the last known position",
+			location:      geo.NewPoint(0, 0),
+			validLocation: false,
+		},
+		{
+			name:          "if current location is nil return the last known position",
+			validLocation: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mockGPSData.Location = tc.location
+			location, alt, err := rtk.Position(ctx, nil)
+			test.That(t, err, test.ShouldBeNil)
+			test.That(t, alt, test.ShouldEqual, mockGPSData.Alt)
+
+			if tc.validLocation {
+				test.That(t, location, test.ShouldResemble, mockGPSData.Location)
+			}
+
+			// last position should be updated to the most recent known position
+			test.That(t, location, test.ShouldEqual, rtk.lastposition.GetLastPosition())
+
+		})
+	}
 }

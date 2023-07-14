@@ -66,7 +66,7 @@ func init() {
 }
 
 // A RTKMovementSensor is an NMEA MovementSensor model that can intake RTK correction data.
-type RTKI2CNoNetwork struct {
+type rtkI2CNoNetwork struct {
 	resource.Named
 	resource.AlwaysRebuild
 	logger     golog.Logger
@@ -99,7 +99,7 @@ func newRTKI2CNoNetwork(
 ) (movementsensor.MovementSensor, error) {
 
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
-	g := &RTKI2CNoNetwork{
+	g := &rtkI2CNoNetwork{
 		Named:        name.AsNamed(),
 		cancelCtx:    cancelCtx,
 		cancelFunc:   cancelFunc,
@@ -125,7 +125,7 @@ func newRTKI2CNoNetwork(
 }
 
 // Start begins the background task to recieve and write I2C.
-func (g *RTKI2CNoNetwork) start() error {
+func (g *rtkI2CNoNetwork) start() error {
 	if err := g.startGPSNMEA(g.cancelCtx); err != nil {
 		g.lastposition.GetLastPosition()
 		return err
@@ -138,8 +138,7 @@ func (g *RTKI2CNoNetwork) start() error {
 }
 
 // start begins reading nmea messages from module and updates gps data.
-func (g *RTKI2CNoNetwork) startGPSNMEA(ctx context.Context) error {
-
+func (g *rtkI2CNoNetwork) startGPSNMEA(ctx context.Context) error {
 	err := g.initializeI2C(ctx)
 	if err != nil {
 		g.logger.Errorf("error initializing i2c %v", err)
@@ -154,7 +153,7 @@ func (g *RTKI2CNoNetwork) startGPSNMEA(ctx context.Context) error {
 	return g.err.Get()
 }
 
-func (g *RTKI2CNoNetwork) readNMEAMessages(ctx context.Context) {
+func (g *rtkI2CNoNetwork) readNMEAMessages(ctx context.Context) {
 	defer g.activeBackgroundWorkers.Done()
 	strBuf := ""
 	for {
@@ -184,10 +183,10 @@ func (g *RTKI2CNoNetwork) readNMEAMessages(ctx context.Context) {
 		buffer := make([]byte, 1024)
 		_, err = i2cBus.ReadBytes(buffer)
 		g.err.Set(err)
-		hErr := i2cBus.Close()
-		g.err.Set(hErr)
-		if hErr != nil {
-			g.logger.Errorf("failed to close the i2c bus: %s", hErr)
+		err = i2cBus.Close()
+		g.err.Set(err)
+		if err != nil {
+			g.logger.Errorf("failed to close the i2c bus: %s", err)
 			return
 		}
 		if err != nil {
@@ -215,8 +214,7 @@ func (g *RTKI2CNoNetwork) readNMEAMessages(ctx context.Context) {
 	}
 }
 
-func (g *RTKI2CNoNetwork) initializeI2C(ctx context.Context) error {
-
+func (g *rtkI2CNoNetwork) initializeI2C(ctx context.Context) error {
 	// create i2c connection
 	i2cBus, err := i2c.NewI2C(g.writeAddr, g.bus)
 	if err != nil {
@@ -256,7 +254,7 @@ func (g *RTKI2CNoNetwork) initializeI2C(ctx context.Context) error {
 }
 
 // receiveAndWriteI2C reads tbe rctm correction messages from the read addr and writes the write addr
-func (g *RTKI2CNoNetwork) receiveAndWriteI2C(ctx context.Context) {
+func (g *rtkI2CNoNetwork) receiveAndWriteI2C(ctx context.Context) {
 
 	defer g.activeBackgroundWorkers.Done()
 	if err := g.cancelCtx.Err(); err != nil {
@@ -283,6 +281,7 @@ func (g *RTKI2CNoNetwork) receiveAndWriteI2C(ctx context.Context) {
 		// change so you don't see a million logs
 		logger.ChangePackageLogLevel("i2c", logger.InfoLevel)
 
+		// read from the correction buffer
 		buf := make([]byte, 1024)
 		_, err = g.readI2c.ReadBytes(buf)
 		g.err.Set(err)
@@ -322,7 +321,7 @@ func (g *RTKI2CNoNetwork) receiveAndWriteI2C(ctx context.Context) {
 }
 
 // Position returns the current geographic location of the MOVEMENTSENSOR.
-func (g *RTKI2CNoNetwork) Position(ctx context.Context, extra map[string]interface{}) (*geo.Point, float64, error) {
+func (g *rtkI2CNoNetwork) Position(ctx context.Context, extra map[string]interface{}) (*geo.Point, float64, error) {
 	lastError := g.err.Get()
 	if lastError != nil {
 		lastPosition := g.lastposition.GetLastPosition()
@@ -362,7 +361,7 @@ func (g *RTKI2CNoNetwork) Position(ctx context.Context, extra map[string]interfa
 }
 
 // LinearVelocity passthrough.
-func (g *RTKI2CNoNetwork) LinearVelocity(ctx context.Context, extra map[string]interface{}) (r3.Vector, error) {
+func (g *rtkI2CNoNetwork) LinearVelocity(ctx context.Context, extra map[string]interface{}) (r3.Vector, error) {
 	lastError := g.err.Get()
 	if lastError != nil {
 		return r3.Vector{}, lastError
@@ -374,7 +373,7 @@ func (g *RTKI2CNoNetwork) LinearVelocity(ctx context.Context, extra map[string]i
 }
 
 // LinearAcceleration not supported.
-func (g *RTKI2CNoNetwork) LinearAcceleration(ctx context.Context, extra map[string]interface{}) (r3.Vector, error) {
+func (g *rtkI2CNoNetwork) LinearAcceleration(ctx context.Context, extra map[string]interface{}) (r3.Vector, error) {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	return r3.Vector{}, movementsensor.ErrMethodUnimplementedLinearAcceleration
@@ -382,28 +381,28 @@ func (g *RTKI2CNoNetwork) LinearAcceleration(ctx context.Context, extra map[stri
 }
 
 // AngularVelocity not supported.
-func (g *RTKI2CNoNetwork) AngularVelocity(ctx context.Context, extra map[string]interface{}) (spatialmath.AngularVelocity, error) {
+func (g *rtkI2CNoNetwork) AngularVelocity(ctx context.Context, extra map[string]interface{}) (spatialmath.AngularVelocity, error) {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	return spatialmath.AngularVelocity{}, movementsensor.ErrMethodUnimplementedAngularVelocity
 }
 
 // CompassHeading not supported.
-func (g *RTKI2CNoNetwork) CompassHeading(ctx context.Context, extra map[string]interface{}) (float64, error) {
+func (g *rtkI2CNoNetwork) CompassHeading(ctx context.Context, extra map[string]interface{}) (float64, error) {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	return 0, movementsensor.ErrMethodUnimplementedCompassHeading
 }
 
 // Orientation not supported.
-func (g *RTKI2CNoNetwork) Orientation(ctx context.Context, extra map[string]interface{}) (spatialmath.Orientation, error) {
+func (g *rtkI2CNoNetwork) Orientation(ctx context.Context, extra map[string]interface{}) (spatialmath.Orientation, error) {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	return nil, movementsensor.ErrMethodUnimplementedOrientation
 }
 
 // ReadFix passthrough.
-func (g *RTKI2CNoNetwork) readFix(ctx context.Context) (int, error) {
+func (g *rtkI2CNoNetwork) readFix(ctx context.Context) (int, error) {
 	lastError := g.err.Get()
 	if lastError != nil {
 		return 0, lastError
@@ -415,7 +414,7 @@ func (g *RTKI2CNoNetwork) readFix(ctx context.Context) (int, error) {
 }
 
 // Properties passthrough.
-func (g *RTKI2CNoNetwork) Properties(ctx context.Context, extra map[string]interface{}) (*movementsensor.Properties, error) {
+func (g *rtkI2CNoNetwork) Properties(ctx context.Context, extra map[string]interface{}) (*movementsensor.Properties, error) {
 	return &movementsensor.Properties{
 		LinearVelocitySupported: true,
 		PositionSupported:       true,
@@ -423,7 +422,7 @@ func (g *RTKI2CNoNetwork) Properties(ctx context.Context, extra map[string]inter
 }
 
 // Accuracy passthrough.
-func (g *RTKI2CNoNetwork) Accuracy(ctx context.Context, extra map[string]interface{}) (map[string]float32, error) {
+func (g *rtkI2CNoNetwork) Accuracy(ctx context.Context, extra map[string]interface{}) (map[string]float32, error) {
 	lastError := g.err.Get()
 	if lastError != nil {
 		return map[string]float32{}, lastError
@@ -435,7 +434,7 @@ func (g *RTKI2CNoNetwork) Accuracy(ctx context.Context, extra map[string]interfa
 }
 
 // Readings will use the default MovementSensor Readings if not provided.
-func (g *RTKI2CNoNetwork) Readings(ctx context.Context, extra map[string]interface{}) (map[string]interface{}, error) {
+func (g *rtkI2CNoNetwork) Readings(ctx context.Context, extra map[string]interface{}) (map[string]interface{}, error) {
 	readings, err := movementsensor.Readings(ctx, g, extra)
 
 	if err != nil {
@@ -446,7 +445,7 @@ func (g *RTKI2CNoNetwork) Readings(ctx context.Context, extra map[string]interfa
 }
 
 // Close shuts down the RTKI2CNoNetwork.
-func (g *RTKI2CNoNetwork) Close(ctx context.Context) error {
+func (g *rtkI2CNoNetwork) Close(ctx context.Context) error {
 
 	g.cancelFunc()
 
@@ -454,12 +453,14 @@ func (g *RTKI2CNoNetwork) Close(ctx context.Context) error {
 		if err := g.readI2c.Close(); err != nil {
 			return err
 		}
+		g.readI2c = nil
 	}
 
 	if g.writeI2c != nil {
 		if err := g.writeI2c.Close(); err != nil {
 			return err
 		}
+		g.writeI2c = nil
 	}
 
 	if err := g.err.Get(); err != nil && !errors.Is(err, context.Canceled) {
