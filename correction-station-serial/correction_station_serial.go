@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log"
 	"sync"
 
 	"github.com/edaniels/golog"
@@ -18,7 +17,6 @@ import (
 
 const (
 	serialStr = "serial"
-	timeMode  = "time"
 )
 
 var (
@@ -141,13 +139,10 @@ func (r *rtkStationSerial) openReader(path string, baud int) (io.ReadCloser, err
 		MinimumReadSize: 4,
 	}
 
-	log.Println("here")
 	port, err := serial.Open(options)
 	if err != nil {
-		log.Println("err")
 		return nil, err
 	}
-	log.Println("here2")
 	return port, nil
 }
 
