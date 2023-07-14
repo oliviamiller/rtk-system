@@ -114,28 +114,3 @@ func TestNewRTKStationI2C(t *testing.T) {
 		})
 	}
 }
-
-/*
-func TestClose(t *testing.T) {
-	logger := golog.NewTestLogger(t)
-	ctx := context.Background()
-	cancelCtx, cancelFunc := context.WithCancel(ctx)
-
-	tests := []struct {
-		name        string
-		baseStation *rtkStationI2C
-		expectedErr error
-	}{
-		{
-			name: "should close i2c with no errors",
-			baseStation: &rtkStationI2C{
-				cancelCtx: cancelCtx, cancelFunc: cancelFunc, logger: logger
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			err := tc.baseStation.Close(ctx)
-			test.That(t, err, test.ShouldBeNil)
-		})
-	}
-} */

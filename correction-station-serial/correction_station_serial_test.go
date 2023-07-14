@@ -119,32 +119,3 @@ func TestNewSerialRTKStation(t *testing.T) {
 		})
 	}
 }
-
-/* func TestClose(t *testing.T) {
-	logger := golog.NewTestLogger(t)
-	ctx := context.Background()
-	cancelCtx, cancelFunc := context.WithCancel(ctx)
-
-	tests := []struct {
-		name        string
-		baseStation *rtkStationSerial
-		expectedErr error
-	}{
-		{
-			name: "should close with no errors",
-			baseStation: &rtkStationSerial{
-				cancelCtx: cancelCtx, cancelFunc: cancelFunc, logger: logger, correctionSource: &serialCorrectionSource{
-					cancelCtx:  cancelCtx,
-					cancelFunc: cancelFunc,
-					logger:     logger,
-				},
-			},
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			err := tc.baseStation.Close(ctx)
-			test.That(t, err, test.ShouldBeNil)
-		})
-	}
-} */

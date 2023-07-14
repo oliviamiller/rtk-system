@@ -15,10 +15,6 @@ import (
 	"go.viam.com/rdk/resource"
 )
 
-const (
-	i2cStr = "i2c"
-)
-
 var (
 	Model               = resource.NewModel("viam-labs", "sensor", "correction-station-i2c")
 	errRequiredAccuracy = errors.New("required accuracy can be a fixed number 1-5, 5 being the highest accuracy")
@@ -144,7 +140,9 @@ func (r *rtkStationI2C) start(ctx context.Context) {
 		select {
 		case <-r.cancelCtx.Done():
 			return
+		default:
 		}
+
 		var err error
 		// change log level
 		logger.ChangePackageLogLevel("i2c", logger.InfoLevel)

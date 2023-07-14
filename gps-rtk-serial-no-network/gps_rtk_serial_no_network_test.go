@@ -6,7 +6,6 @@ import (
 
 	"github.com/edaniels/golog"
 	"go.viam.com/rdk/components/movementsensor"
-	"go.viam.com/rdk/components/movementsensor/fake"
 	"go.viam.com/rdk/resource"
 	"go.viam.com/test"
 	"go.viam.com/utils"
@@ -91,7 +90,7 @@ func TestNewrtkSerialNoNetwork(t *testing.T) {
 				test.That(t, err, test.ShouldBeNil)
 				test.That(t, g.Close(context.Background()), test.ShouldBeNil)
 				test.That(t, g, test.ShouldNotBeNil)
-				test.That(t, g.Name(), test.ShouldEqual, tc.resourceConfig.ResourceName())
+				test.That(t, g.Name(), test.ShouldResemble, tc.resourceConfig.ResourceName())
 			}
 		})
 	}
@@ -106,8 +105,6 @@ func TestClose(t *testing.T) {
 		cancelFunc: cancelFunc,
 		logger:     logger,
 	}
-	g.nmeamovementsensor = &fake.MovementSensor{}
-
 	err := g.Close(ctx)
 	test.That(t, err, test.ShouldBeNil)
 }

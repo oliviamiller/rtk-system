@@ -3,11 +3,10 @@ package main
 
 import (
 	"context"
-
 	stationi2c "rtksystem/correction-station-i2c"
-	stationserial "rtksystem/correction-station-serial"
-	gpsnmea "rtksystem/gps-nmea"
-	gpsrtki2c "rtksystem/gps-rtk-i2c-no-network"
+	serialstation "rtksystem/correction-station-serial"
+
+	gpsrtki2cnonetwork "rtksystem/gps-rtk-i2c-no-network"
 	gpsrtkserialnonetwork "rtksystem/gps-rtk-serial-no-network"
 
 	"github.com/edaniels/golog"
@@ -27,11 +26,10 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) error
 	if err != nil {
 		return err
 	}
+	rtkSystem.AddModelFromRegistry(ctx, sensor.API, serialstation.Model)
 	rtkSystem.AddModelFromRegistry(ctx, sensor.API, stationi2c.Model)
-	rtkSystem.AddModelFromRegistry(ctx, sensor.API, stationserial.Model)
-	rtkSystem.AddModelFromRegistry(ctx, movementsensor.API, gpsrtki2c.Model)
-	rtkSystem.AddModelFromRegistry(ctx, movementsensor.API, gpsnmea.Model)
 	rtkSystem.AddModelFromRegistry(ctx, movementsensor.API, gpsrtkserialnonetwork.Model)
+	rtkSystem.AddModelFromRegistry(ctx, movementsensor.API, gpsrtki2cnonetwork.Model)
 
 	err = rtkSystem.Start(ctx)
 	defer rtkSystem.Close(ctx)
