@@ -61,7 +61,6 @@ type configCommand struct {
 	correctionType string
 	portName       string
 	baudRate       uint
-	surveyIn       string
 
 	requiredAcc     float64
 	observationTime int
@@ -81,7 +80,6 @@ func ConfigureBaseRTKStation(newConf *Config) error {
 	correctionType := "serial"
 
 	c := &configCommand{
-		surveyIn:        timeMode,
 		correctionType:  correctionType,
 		requiredAcc:     requiredAcc,
 		observationTime: observationTime,

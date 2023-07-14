@@ -14,13 +14,8 @@ import (
 	"go.viam.com/utils"
 )
 
-const (
-	serialStr = "serial"
-	timeMode  = "time"
-)
-
 var (
-	Model               = resource.NewModel("viam-labs", "sensor", "correction-station_serial")
+	Model               = resource.NewModel("viam-labs", "sensor", "correction-station-serial")
 	errRequiredAccuracy = errors.New("required accuracy can be a fixed number 1-5, 5 being the highest accuracy")
 )
 
@@ -65,7 +60,7 @@ func (cfg *Config) Validate(path string) ([]string, error) {
 		return nil, errRequiredAccuracy
 	}
 	if cfg.RequiredTime == 0 {
-		return nil, utils.NewConfigValidationFieldRequiredError(path, "required_time")
+		return nil, utils.NewConfigValidationFieldRequiredError(path, "required_time_sec")
 	}
 	if cfg.SerialPath == "" {
 		return nil, utils.NewConfigValidationFieldRequiredError(path, "serial_path")

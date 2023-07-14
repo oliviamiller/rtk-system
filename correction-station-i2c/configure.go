@@ -39,8 +39,6 @@ const (
 
 	svinModeEnable  = 0x01
 	svinModeDisable = 0x00
-
-	timeMode = "time"
 )
 
 var rtcmMsgs = map[int]int{
@@ -66,7 +64,6 @@ type configCommand struct {
 	portName       string
 	i2cbus         *i2c.I2C
 	baudRate       uint
-	surveyIn       string
 
 	requiredAcc     float64
 	observationTime int
@@ -86,7 +83,6 @@ func ConfigureBaseRTKStation(newConf *Config) error {
 	observationTime := newConf.RequiredTime
 
 	c := &configCommand{
-		surveyIn:        timeMode,
 		correctionType:  correctionType,
 		requiredAcc:     requiredAcc,
 		observationTime: observationTime,
