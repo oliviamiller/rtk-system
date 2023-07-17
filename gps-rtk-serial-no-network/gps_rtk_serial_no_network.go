@@ -396,17 +396,9 @@ func (g *rtkSerialNoNetwork) Accuracy(ctx context.Context, extra map[string]inte
 	return map[string]float32{"hDOP": float32(g.data.HDOP), "vDOP": float32(g.data.VDOP)}, g.err.Get()
 }
 
-// Readings will use the default MovementSensor Readings if not provided.
+// Readings will use the MovementSensor Readings
 func (g *rtkSerialNoNetwork) Readings(ctx context.Context, extra map[string]interface{}) (map[string]interface{}, error) {
 	readings := make(map[string]interface{})
-
-	fix, err := g.readFix(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	readings["fix"] = fix
-
 	return readings, nil
 }
 

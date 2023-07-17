@@ -111,6 +111,8 @@ func TestNewRTKStationI2C(t *testing.T) {
 			g, err := newRTKStationI2C(ctx, deps, tc.resourceConf.ResourceName(), tc.conf, logger)
 			test.That(t, err, test.ShouldBeNil)
 			test.That(t, g.Name(), test.ShouldResemble, tc.resourceConf.ResourceName())
+			err = g.Close(ctx)
+			test.That(t, err, test.ShouldBeNil)
 		})
 	}
 }

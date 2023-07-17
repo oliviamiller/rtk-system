@@ -115,7 +115,6 @@ func TestNewSerialRTKStation(t *testing.T) {
 			test.That(t, g.Name(), test.ShouldResemble, tc.resourceConf.ResourceName())
 			err = g.Close(ctx)
 			test.That(t, err, test.ShouldBeNil)
-
 		})
 	}
 }
