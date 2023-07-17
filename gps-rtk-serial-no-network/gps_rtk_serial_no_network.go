@@ -413,29 +413,30 @@ func (g *rtkSerialNoNetwork) Readings(ctx context.Context, extra map[string]inte
 // Close shuts down the RTKSerialNoNetwork.
 func (g *rtkSerialNoNetwork) Close(ctx context.Context) error {
 	g.cancelFunc()
+	g.activeBackgroundWorkers.Wait()
 
 	g.correctionReaderMu.Lock()
 
-	//close the reader
+	// close the reader.
 	if g.correctionReader != nil {
 		if err := g.correctionReader.Close(); err != nil {
 			g.correctionReaderMu.Unlock()
-			return err
+			g.err.Set(err)
+			g.logger.Errorf("failed to close correction reader %s", err)
 		}
 		g.correctionReader = nil
 	}
 
 	g.correctionReaderMu.Unlock()
 
-	// close the writer
+	// close the writer.
 	if g.correctionWriter != nil {
 		if err := g.correctionWriter.Close(); err != nil {
-			return err
+			g.err.Set(err)
+			g.logger.Errorf("failed to close correction writer %s", err)
 		}
 		g.correctionWriter = nil
 	}
-
-	g.activeBackgroundWorkers.Wait()
 
 	if err := g.err.Get(); err != nil && !errors.Is(err, context.Canceled) {
 		return err

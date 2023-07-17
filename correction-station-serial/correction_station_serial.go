@@ -102,14 +102,14 @@ func newRTKStationSerial(
 		err:        movementsensor.NewLastError(1, 1),
 	}
 
-	err := ConfigureBaseRTKStation(newConf)
-	if err != nil {
-		r.logger.Warn("rtk base station could not be configured")
-	}
-
 	// set a default baud rate if not specified in config
 	if newConf.SerialBaudRate == 0 {
 		newConf.SerialBaudRate = 38400
+	}
+
+	err := ConfigureBaseRTKStation(newConf)
+	if err != nil {
+		r.logger.Warn("rtk base station could not be configured")
 	}
 
 	if newConf.TestChan == nil {
@@ -187,18 +187,24 @@ func (r *rtkStationSerial) Close(ctx context.Context) error {
 	r.cancelFunc()
 	r.activeBackgroundWorkers.Wait()
 
-	// close correction source
+	// close correction reader
 	if r.reader != nil {
 		err := r.reader.Close()
+		r.err.Set(err)
 		if err != nil {
-			return err
+			r.logger.Errorf("failed to close the serial reader: %s", err)
 		}
+	}
+	r.reader = nil
+
+	if err := r.err.Get(); err != nil && !errors.Is(err, context.Canceled) {
+		return err
 	}
 
 	return nil
 }
 
-// TODO: add readings for fix and num sats in view
+// Readings not supported.
 func (r *rtkStationSerial) Readings(ctx context.Context, extra map[string]interface{}) (map[string]interface{}, error) {
 	return map[string]interface{}{}, errors.New("unimplemented")
 }

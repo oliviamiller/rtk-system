@@ -188,8 +188,11 @@ func (r *rtkStationI2C) Close(ctx context.Context) error {
 	if r.i2cBus != nil {
 		err := r.i2cBus.Close()
 		r.err.Set(err)
-		r.logger.Debug("failed to close i2c handle: %s", err)
+		if err != nil {
+			r.logger.Errorf("failed to close i2c bus: %s", err)
+		}
 	}
+	r.i2cBus = nil
 
 	if err := r.err.Get(); err != nil && !errors.Is(err, context.Canceled) {
 		return err

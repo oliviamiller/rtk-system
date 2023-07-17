@@ -307,12 +307,14 @@ func (g *rtkI2CNoNetwork) receiveAndWriteI2C(ctx context.Context) {
 		// close I2C handles each time so other processes can use them
 		err = g.readI2c.Close()
 		g.err.Set(err)
+		g.readI2c = nil
 		if err != nil {
 			g.logger.Debug("failed to close i2c handle: %s", err)
 			return
 		}
 		err = g.writeI2c.Close()
 		g.err.Set(err)
+		g.writeI2c = nil
 		if err != nil {
 			g.logger.Debug("failed to close i2c handle: %s", err)
 			return
@@ -433,7 +435,7 @@ func (g *rtkI2CNoNetwork) Accuracy(ctx context.Context, extra map[string]interfa
 	return map[string]float32{"hDOP": float32(g.data.HDOP), "vDOP": float32(g.data.VDOP)}, g.err.Get()
 }
 
-// Readings will use the default MovementSensor Readings if not provided.
+// Readings uses the movementSensor readings function.
 func (g *rtkI2CNoNetwork) Readings(ctx context.Context, extra map[string]interface{}) (map[string]interface{}, error) {
 	readings, err := movementsensor.Readings(ctx, g, extra)
 
@@ -446,19 +448,23 @@ func (g *rtkI2CNoNetwork) Readings(ctx context.Context, extra map[string]interfa
 
 // Close shuts down the RTKI2CNoNetwork.
 func (g *rtkI2CNoNetwork) Close(ctx context.Context) error {
-
 	g.cancelFunc()
+	g.activeBackgroundWorkers.Wait()
 
 	if g.readI2c != nil {
-		if err := g.readI2c.Close(); err != nil {
-			return err
+		err := g.readI2c.Close()
+		g.err.Set(err)
+		if err != nil {
+			g.logger.Errorf("failed to close i2c read bus: %s", err)
 		}
 		g.readI2c = nil
 	}
 
 	if g.writeI2c != nil {
-		if err := g.writeI2c.Close(); err != nil {
-			return err
+		err := g.writeI2c.Close()
+		g.err.Set(err)
+		if err != nil {
+			g.logger.Errorf("failed to close i2c write bus: %s", err)
 		}
 		g.writeI2c = nil
 	}
