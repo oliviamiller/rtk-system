@@ -26,7 +26,7 @@ var errNilLocation = errors.New("nil gps location, check nmea message parsing")
 type Config struct {
 	SerialNMEAPath           string `json:"serial_nmea_path"` // The path that NMEA data is being written to
 	SerialNMEABaudRate       int    `json:"serial_nmea_baud_rate,omitempty"`
-	SerialCorrectionPath     string `json:"serial_correction_path"` // The path that rctm data will be read from
+	SerialCorrectionPath     string `json:"serial_correction_path"` // The path that rtcm data will be read from
 	SerialCorrectionBaudRate int    `json:"serial_correction_baud_rate"`
 
 	// TestChan is a fake "serial" path for test use only
