@@ -26,6 +26,8 @@ const (
 	ubxCfgTmode3   = 0x71
 	maxPayloadSize = 256
 	ubxCfgCfg      = 0x09
+	ubxCfgPrt      = 0x00
+	comTypeRTCM3   = (1 << 5)
 
 	ubxNmeaMsb = 0xF0 // All NMEA enable commands have 0xF0 as MSB. Equal to UBX_CLASS_NMEA
 	ubxNmeaGga = 0x00 // GxGGA (Global positioning system fix data)
@@ -37,6 +39,8 @@ const (
 
 	svinModeEnable  = 0x01
 	svinModeDisable = 0x00
+
+	//const uint32_t VAL_CFG_SUBSEC_IOPORT = 0x00000001;
 )
 
 var rtcmMsgs = map[int]int{
@@ -87,8 +91,12 @@ func ConfigureBaseRTKStation(newConf *Config) error {
 		msgsToDisable:   nmeaMsgs, // defaults
 	}
 
-	err := c.serialConfigure(newConf)
+	err := c.openSerial(newConf)
 	if err != nil {
+		return err
+	}
+
+	if err := c.setOutput(); err != nil {
 		return err
 	}
 
@@ -109,7 +117,7 @@ func ConfigureBaseRTKStation(newConf *Config) error {
 	return nil
 }
 
-func (c *configCommand) serialConfigure(newConf *Config) error {
+func (c *configCommand) openSerial(newConf *Config) error {
 
 	portName := newConf.SerialPath
 	if portName == "" {
@@ -122,7 +130,7 @@ func (c *configCommand) serialConfigure(newConf *Config) error {
 		baudRate = 38400
 	}
 	c.baudRate = uint(baudRate)
-	c.portID = uart2
+	c.portID = usb
 
 	options := serial.OpenOptions{
 		PortName:        c.portName,
@@ -139,6 +147,21 @@ func (c *configCommand) serialConfigure(newConf *Config) error {
 	}
 	c.writePort = writePort
 
+	return nil
+}
+
+func (c *configCommand) setOutput() error {
+	cls := ubxClassCfg
+	id := ubxCfgPrt
+	msgLen := 20
+	payloadCfg := make([]byte, 15)
+	payloadCfg[40] = comTypeRTCM3
+
+	err := c.sendCommand(cls, id, msgLen, payloadCfg)
+
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
