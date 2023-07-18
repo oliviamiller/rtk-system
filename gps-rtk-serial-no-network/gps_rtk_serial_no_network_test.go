@@ -130,10 +130,16 @@ func TestPosition(t *testing.T) {
 		name          string
 		location      *geo.Point
 		validLocation bool
+		expectedErr   error
 	}{
 		{
 			name:          "should return the current postion",
 			location:      geo.NewPoint(1, 2),
+			validLocation: true,
+		},
+		{
+			name:          "should return the current postion with floating point close to zero",
+			location:      geo.NewPoint(0.01, 0.001),
 			validLocation: true,
 		},
 		{
@@ -144,20 +150,24 @@ func TestPosition(t *testing.T) {
 		{
 			name:          "if current location is nil return the last known position",
 			validLocation: false,
+			expectedErr:   errNilLocation,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			mockGPSData.Location = tc.location
+			testRTK.data.Location = tc.location
 			location, alt, err := testRTK.Position(ctx, nil)
-			test.That(t, err, test.ShouldBeNil)
-			test.That(t, alt, test.ShouldEqual, mockGPSData.Alt)
-
-			if tc.validLocation {
-				test.That(t, location, test.ShouldResemble, mockGPSData.Location)
+			if tc.expectedErr == nil {
+				test.That(t, err, test.ShouldBeNil)
+				test.That(t, alt, test.ShouldEqual, mockGPSData.Alt)
+			} else {
+				test.That(t, err, test.ShouldBeError, tc.expectedErr)
+				test.That(t, alt, test.ShouldEqual, 0)
 			}
-
+			if tc.validLocation {
+				test.That(t, location, test.ShouldResemble, tc.location)
+			}
 			// last position should be updated to the most recent known position
 			test.That(t, location, test.ShouldEqual, testRTK.lastposition.GetLastPosition())
 
