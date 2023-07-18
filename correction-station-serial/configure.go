@@ -62,9 +62,8 @@ var nmeaMsgs = map[int]int{
 }
 
 type configCommand struct {
-	correctionType string
-	portName       string
-	baudRate       uint
+	portName string
+	baudRate uint
 
 	requiredAcc     float64
 	observationTime int
@@ -81,10 +80,8 @@ func ConfigureBaseRTKStation(newConf *Config) error {
 
 	requiredAcc := newConf.RequiredAccuracy
 	observationTime := newConf.RequiredTime
-	correctionType := "serial"
 
 	c := &configCommand{
-		correctionType:  correctionType,
 		requiredAcc:     requiredAcc,
 		observationTime: observationTime,
 		msgsToEnable:    rtcmMsgs, // defaults
@@ -100,15 +97,18 @@ func ConfigureBaseRTKStation(newConf *Config) error {
 		return err
 	}
 
+	// enable the station to send RTCM messages.
 	if err := c.enableAll(ubxRtcmMsb); err != nil {
 		return err
 	}
 
+	// disable NMEA message sending.
 	err = c.disableAll(ubxNmeaMsb)
 	if err != nil {
 		return err
 	}
 
+	// enable surveyin mode.
 	err = c.enableSVIN()
 	if err != nil {
 		return err
@@ -280,7 +280,6 @@ func (c *configCommand) setSurveyMode(mode int, requiredAccuracy float64, observ
 	return c.sendCommand(cls, id, msgLen, payloadCfg)
 }
 
-//nolint:lll,unused
 func (c *configCommand) setStaticPosition(ecefXOrLat, ecefXOrLatHP, ecefYOrLon, ecefYOrLonHP, ecefZOrAlt, ecefZOrAltHP int, latLong bool) error {
 	cls := ubxClassCfg
 	id := ubxCfgTmode3
@@ -359,7 +358,6 @@ func (c *configCommand) saveAllConfigs() error {
 
 // Close closes all open ports used in configuration.
 func (c *configCommand) Close(ctx context.Context) error {
-	// close port reader if serial
 	if c.writePort != nil {
 		if err := c.writePort.Close(); err != nil {
 			return err

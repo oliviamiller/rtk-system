@@ -60,10 +60,8 @@ var nmeaMsgs = map[int]int{
 }
 
 type configCommand struct {
-	correctionType string
-	portName       string
-	i2cbus         *i2c.I2C
-	baudRate       uint
+	i2cbus   *i2c.I2C
+	baudRate uint
 
 	requiredAcc     float64
 	observationTime int
@@ -78,12 +76,10 @@ type configCommand struct {
 // ConfigureBaseRTKStation configures an RTK chip to act as a base station and send correction data.
 func ConfigureBaseRTKStation(newConf *Config) error {
 
-	correctionType := "i2c"
 	requiredAcc := newConf.RequiredAccuracy
 	observationTime := newConf.RequiredTime
 
 	c := &configCommand{
-		correctionType:  correctionType,
 		requiredAcc:     requiredAcc,
 		observationTime: observationTime,
 		msgsToEnable:    rtcmMsgs, // defaults
@@ -95,15 +91,18 @@ func ConfigureBaseRTKStation(newConf *Config) error {
 		return err
 	}
 
+	// enable the station to send RTCM messages
 	if err := c.enableAll(ubxRtcmMsb); err != nil {
 		return err
 	}
 
+	// disable NMEA message sending
 	err = c.disableAll(ubxNmeaMsb)
 	if err != nil {
 		return err
 	}
 
+	// enable survey in mode
 	err = c.enableSVIN()
 	if err != nil {
 		return err
