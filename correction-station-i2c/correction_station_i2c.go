@@ -48,9 +48,6 @@ type Config struct {
 	I2CBus      int `json:"i2c_bus"`
 	I2CAddr     int `json:"i2c_addr"`
 	I2CBaudRate int `json:"i2c_baud_rate,omitempty"`
-
-	// TestChan is a fake i2c bus for testing use only
-	TestChan chan []uint8 `json:"-"`
 }
 
 // Validate ensures all parts of the config are valid.

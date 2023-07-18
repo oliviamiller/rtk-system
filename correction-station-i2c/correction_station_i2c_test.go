@@ -82,8 +82,6 @@ func TestNewRTKStationI2C(t *testing.T) {
 	ctx := context.Background()
 	deps := make(resource.Dependencies)
 
-	c := make(chan []byte, 1024)
-
 	tests := []struct {
 		name         string
 		resourceConf *resource.Config
@@ -102,7 +100,6 @@ func TestNewRTKStationI2C(t *testing.T) {
 				RequiredTime:     200,
 				I2CBus:           testBus,
 				I2CAddr:          testi2cAddr,
-				TestChan:         c,
 			},
 		},
 	}

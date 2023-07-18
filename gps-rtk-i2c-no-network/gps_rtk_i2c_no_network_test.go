@@ -90,7 +90,7 @@ func TestNewrtki2cNoNetwork(t *testing.T) {
 	logger := golog.NewTestLogger(t)
 	ctx := context.Background()
 	deps := make(resource.Dependencies)
-	//c := make(chan []uint8)
+
 	tests := []struct {
 		name           string
 		resourceConfig resource.Config
