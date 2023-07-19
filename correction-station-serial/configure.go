@@ -3,7 +3,6 @@ package stationserial
 import (
 	"context"
 	"io"
-	"log"
 
 	"github.com/jacobsa/go-serial/serial"
 )
@@ -189,11 +188,10 @@ func (c *configCommand) sendCommand(cls, id, msgLen int, payloadCfg []byte) erro
 
 	// then wait to capture ack response
 	buf := make([]byte, maxPayloadSize)
-	response, err := c.writePort.Read(buf)
+	_, err = c.writePort.Read(buf)
 	if err != nil {
 		return err
 	}
-	log.Println(response)
 	return nil
 }
 
@@ -230,7 +228,6 @@ func (c *configCommand) getSurveyMode() error {
 	id := ubxCfgTmode3
 	payloadCfg := make([]byte, 40)
 	c.sendCommand(cls, id, 0, payloadCfg) // set payloadcfg
-	log.Println(payloadCfg)
 	return nil
 }
 

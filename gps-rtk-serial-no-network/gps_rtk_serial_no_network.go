@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log"
 	"math"
 	"sync"
 
@@ -167,7 +166,6 @@ func (g *rtkSerialNoNetwork) readNMEAMessages(ctx context.Context) {
 		}
 
 		line, err := r.ReadString('\n')
-		log.Println(line)
 		if err != nil {
 			g.logger.Errorf("can't read gps serial %s", err)
 			g.err.Set(err)
@@ -303,7 +301,6 @@ func (g *rtkSerialNoNetwork) Position(ctx context.Context, extra map[string]inte
 	defer g.dataMu.RUnlock()
 
 	currentPosition := g.data.Location
-	log.Println(g.data.FixQuality)
 
 	if currentPosition == nil {
 		return lastPosition, 0, errNilLocation

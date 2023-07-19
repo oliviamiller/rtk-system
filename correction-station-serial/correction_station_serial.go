@@ -111,7 +111,6 @@ func newRTKStationSerial(
 	}
 
 	if newConf.TestChan == nil {
-		var err error
 		r.reader, err = r.openReader(newConf.SerialPath, newConf.SerialBaudRate)
 		if err != nil {
 			r.logger.Errorf("Error opening the serial port", err)

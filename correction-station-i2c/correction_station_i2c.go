@@ -107,6 +107,8 @@ func newRTKStationI2C(
 		err:        movementsensor.NewLastError(1, 1),
 	}
 
+	r.logger.Debug("configuring the base station")
+
 	err := ConfigureBaseRTKStation(newConf)
 	if err != nil {
 		r.logger.Warn("rtk base station could not be configured")
@@ -116,7 +118,7 @@ func newRTKStationI2C(
 	r.i2cPath.addr = byte(newConf.I2CAddr)
 	r.i2cPath.bus = newConf.I2CBus
 
-	r.logger.Debug("Starting")
+	r.logger.Debug("Starting the i2c station")
 
 	r.start(ctx)
 	return r, r.err.Get()
