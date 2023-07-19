@@ -103,6 +103,8 @@ func newRTKStationSerial(
 		newConf.SerialBaudRate = 38400
 	}
 
+	r.logger.Debug("configuring the base station")
+
 	err := ConfigureBaseRTKStation(newConf)
 	if err != nil {
 		r.logger.Warn("rtk base station could not be configured")
@@ -117,7 +119,7 @@ func newRTKStationSerial(
 		}
 	}
 
-	r.logger.Debug("Starting")
+	r.logger.Debug("Starting the serial station")
 	r.start(ctx)
 
 	return r, r.err.Get()

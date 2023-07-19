@@ -3,6 +3,7 @@ package stationserial
 import (
 	"context"
 	"io"
+	"log"
 
 	"github.com/jacobsa/go-serial/serial"
 )
@@ -186,12 +187,13 @@ func (c *configCommand) sendCommand(cls, id, msgLen int, payloadCfg []byte) erro
 		return err
 	}
 
-	// then wait to capture a byte
+	// then wait to capture ack response
 	buf := make([]byte, maxPayloadSize)
-	_, err = c.writePort.Read(buf)
+	response, err := c.writePort.Read(buf)
 	if err != nil {
 		return err
 	}
+	log.Println(response)
 	return nil
 }
 
@@ -227,7 +229,9 @@ func (c *configCommand) getSurveyMode() error {
 	cls := ubxClassCfg
 	id := ubxCfgTmode3
 	payloadCfg := make([]byte, 40)
-	return c.sendCommand(cls, id, 0, payloadCfg) // set payloadcfg
+	c.sendCommand(cls, id, 0, payloadCfg) // set payloadcfg
+	log.Println(payloadCfg)
+	return nil
 }
 
 func (c *configCommand) enableSVIN() error {
@@ -243,7 +247,9 @@ func (c *configCommand) enableSVIN() error {
 	return nil
 }
 
+// Updates the mode to surveyin, which will survey to get the current location of the base station,
 func (c *configCommand) setSurveyMode(mode int, requiredAccuracy float64, observationTime int) error {
+
 	payloadCfg := make([]byte, 40)
 
 	cls := ubxClassCfg
@@ -270,6 +276,7 @@ func (c *configCommand) setSurveyMode(mode int, requiredAccuracy float64, observ
 	return c.sendCommand(cls, id, msgLen, payloadCfg)
 }
 
+// Not currently in use, but could be used to set the position of the base station manually instead of surveying.
 func (c *configCommand) setStaticPosition(ecefXOrLat, ecefXOrLatHP, ecefYOrLon, ecefYOrLonHP, ecefZOrAlt, ecefZOrAltHP int, latLong bool) error {
 	cls := ubxClassCfg
 	id := ubxCfgTmode3
@@ -317,7 +324,6 @@ func (c *configCommand) disableMessageCommand(msgClass, messageNumber, portID in
 }
 
 func (c *configCommand) enableMessageCommand(msgClass, messageNumber, portID, sendRate int) error {
-	// dont use current port settings actually
 	payloadCfg := make([]byte, maxPayloadSize)
 
 	cls := ubxClassCfg

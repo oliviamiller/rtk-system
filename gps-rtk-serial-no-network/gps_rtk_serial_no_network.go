@@ -167,6 +167,7 @@ func (g *rtkSerialNoNetwork) readNMEAMessages(ctx context.Context) {
 		}
 
 		line, err := r.ReadString('\n')
+		log.Println(line)
 		if err != nil {
 			g.logger.Errorf("can't read gps serial %s", err)
 			g.err.Set(err)
