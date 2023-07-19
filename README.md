@@ -8,7 +8,7 @@ connected to a radio or Bluetooth transmitter.
 This can be used for when there is no network connection or there are no public or private NTRIP mount points nearby.
 The base station should be set up with a clear view of the sky for the best fix. In the config, set your desired accuracy (meters)
 and the time required to configure the base station. The base station will be configured to output the correction messages and will begin surveying 
-for it's position. It will continue surveying until both the minimum time and required accuracy are acheived, then will begin to output RTCM messages.
+for it's position. It will continue surveying until both the minimum time and required accuracy are achieved, then will begin to output RTCM messages.
 
 
 
