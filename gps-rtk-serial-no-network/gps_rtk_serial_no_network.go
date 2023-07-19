@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log"
 	"math"
 	"sync"
 
@@ -26,8 +27,11 @@ var errNilLocation = errors.New("nil gps location, check nmea message parsing")
 type Config struct {
 	SerialNMEAPath           string `json:"serial_nmea_path"` // The path that NMEA data is being written to
 	SerialNMEABaudRate       int    `json:"serial_nmea_baud_rate,omitempty"`
-	SerialCorrectionPath     string `json:"serial_correction_path"` // The path that rctm data will be read from
+	SerialCorrectionPath     string `json:"serial_correction_path"` // The path that rtcm data will be read from
 	SerialCorrectionBaudRate int    `json:"serial_correction_baud_rate"`
+
+	// TestChan is a fake "serial" path for test use only
+	TestChan chan []uint8 `json:"-"`
 }
 
 // ValidateSerial ensures all parts of the config are valid.
@@ -121,8 +125,10 @@ func newrtkSerialNoNetwork(
 		g.readBaudRate = 38400
 	}
 
-	if err := g.start(); err != nil {
-		return nil, err
+	if newConf.TestChan == nil {
+		if err := g.start(); err != nil {
+			return nil, err
+		}
 	}
 	return g, g.err.Get()
 
@@ -297,6 +303,9 @@ func (g *rtkSerialNoNetwork) Position(ctx context.Context, extra map[string]inte
 
 	currentPosition := g.data.Location
 
+	log.Println("current positon")
+	log.Println(currentPosition)
+
 	if currentPosition == nil {
 		return lastPosition, 0, errNilLocation
 	}
@@ -391,46 +400,39 @@ func (g *rtkSerialNoNetwork) Accuracy(ctx context.Context, extra map[string]inte
 	return map[string]float32{"hDOP": float32(g.data.HDOP), "vDOP": float32(g.data.VDOP)}, g.err.Get()
 }
 
-// Readings will use the default MovementSensor Readings if not provided.
+// Readings will use the MovementSensor Readings
 func (g *rtkSerialNoNetwork) Readings(ctx context.Context, extra map[string]interface{}) (map[string]interface{}, error) {
 	readings := make(map[string]interface{})
-
-	fix, err := g.readFix(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	readings["fix"] = fix
-
 	return readings, nil
 }
 
 // Close shuts down the RTKSerialNoNetwork.
 func (g *rtkSerialNoNetwork) Close(ctx context.Context) error {
 	g.cancelFunc()
+	g.activeBackgroundWorkers.Wait()
 
 	g.correctionReaderMu.Lock()
 
-	//close the reader
+	// close the reader.
 	if g.correctionReader != nil {
 		if err := g.correctionReader.Close(); err != nil {
 			g.correctionReaderMu.Unlock()
-			return err
+			g.err.Set(err)
+			g.logger.Errorf("failed to close correction reader %s", err)
 		}
 		g.correctionReader = nil
 	}
 
 	g.correctionReaderMu.Unlock()
 
-	// close the writer
+	// close the writer.
 	if g.correctionWriter != nil {
 		if err := g.correctionWriter.Close(); err != nil {
-			return err
+			g.err.Set(err)
+			g.logger.Errorf("failed to close correction writer %s", err)
 		}
 		g.correctionWriter = nil
 	}
-
-	g.activeBackgroundWorkers.Wait()
 
 	if err := g.err.Get(); err != nil && !errors.Is(err, context.Canceled) {
 		return err

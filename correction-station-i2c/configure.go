@@ -3,7 +3,6 @@ package stationi2c
 import (
 	"context"
 	"fmt"
-	"io"
 
 	i2c "github.com/d2r2/go-i2c"
 	"github.com/d2r2/go-logger"
@@ -61,7 +60,6 @@ var nmeaMsgs = map[int]int{
 
 type configCommand struct {
 	correctionType string
-	portName       string
 	i2cbus         *i2c.I2C
 	baudRate       uint
 
@@ -71,8 +69,7 @@ type configCommand struct {
 	msgsToEnable  map[int]int
 	msgsToDisable map[int]int
 
-	portID    int
-	writePort io.ReadWriteCloser
+	portID int
 }
 
 // ConfigureBaseRTKStation configures an RTK chip to act as a base station and send correction data.
@@ -326,14 +323,14 @@ func (c *configCommand) saveAllConfigs() error {
 	return c.sendCommand(cls, id, msgLen, payloadCfg)
 }
 
-// Close closes all open ports used in configuration.
+// Close closes all i2c buses used in configuration.
 func (c *configCommand) Close(ctx context.Context) error {
 	// close port reader if serial
-	if c.writePort != nil {
-		if err := c.writePort.Close(); err != nil {
+	if c.i2cbus != nil {
+		if err := c.i2cbus.Close(); err != nil {
 			return err
 		}
-		c.writePort = nil
+		c.i2cbus = nil
 	}
 	return nil
 }
