@@ -42,7 +42,7 @@ func init() {
 
 // Config is used for the correction-station-i2c attributes
 type Config struct {
-	RequiredAccuracy float64 `json:"required_accuracy,omitempty"` // fixed number 1-5, 5 being the highest accuracy
+	RequiredAccuracy float64 `json:"required_accuracy,omitempty"`
 	RequiredTime     int     `json:"required_time_sec,omitempty"`
 
 	I2CBus      int `json:"i2c_bus"`
@@ -55,9 +55,6 @@ func (cfg *Config) Validate(path string) ([]string, error) {
 	var deps []string
 	if cfg.RequiredAccuracy == 0 {
 		return nil, utils.NewConfigValidationFieldRequiredError(path, "required_accuracy")
-	}
-	if cfg.RequiredAccuracy < 0 || cfg.RequiredAccuracy > 5 {
-		return nil, errRequiredAccuracy
 	}
 	if cfg.RequiredTime == 0 {
 		return nil, utils.NewConfigValidationFieldRequiredError(path, "required_time")

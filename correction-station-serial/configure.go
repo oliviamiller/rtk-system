@@ -5,7 +5,6 @@ import (
 	"io"
 
 	"github.com/jacobsa/go-serial/serial"
-	"github.com/pkg/errors"
 )
 
 const (
@@ -38,8 +37,6 @@ const (
 
 	svinModeEnable  = 0x01
 	svinModeDisable = 0x00
-
-	//const uint32_t VAL_CFG_SUBSEC_IOPORT = 0x00000001;
 )
 
 var rtcmMsgs = map[int]int{
@@ -92,7 +89,7 @@ func ConfigureBaseRTKStation(newConf *Config) error {
 		return err
 	}
 
-	if err := c.setOutput(); err != nil {
+	if err := c.setRTCMOutput(); err != nil {
 		return err
 	}
 
@@ -126,7 +123,7 @@ func (c *configCommand) openSerial(newConf *Config) error {
 		baudRate = 38400
 	}
 	c.baudRate = uint(baudRate)
-	c.portID = usb
+	c.portID = uart2
 
 	options := serial.OpenOptions{
 		PortName:        c.portName,
@@ -146,12 +143,13 @@ func (c *configCommand) openSerial(newConf *Config) error {
 	return nil
 }
 
-func (c *configCommand) setOutput() error {
+// ensure the chip can output RTCM correction messages.
+func (c *configCommand) setRTCMOutput() error {
 	cls := ubxClassCfg
 	id := ubxCfgPrt
-	msgLen := 20
+	msgLen := 15
 	payloadCfg := make([]byte, 15)
-	payloadCfg[40] = comTypeRTCM3
+	payloadCfg[14] = comTypeRTCM3
 
 	err := c.sendCommand(cls, id, msgLen, payloadCfg)
 
@@ -225,7 +223,6 @@ func (c *configCommand) enableAll(msb int) error {
 	return nil
 }
 
-//nolint:unused
 func (c *configCommand) getSurveyMode() error {
 	cls := ubxClassCfg
 	id := ubxCfgTmode3
@@ -248,9 +245,6 @@ func (c *configCommand) enableSVIN() error {
 
 func (c *configCommand) setSurveyMode(mode int, requiredAccuracy float64, observationTime int) error {
 	payloadCfg := make([]byte, 40)
-	if len(payloadCfg) == 0 {
-		return errors.New("must specify payload")
-	}
 
 	cls := ubxClassCfg
 	id := ubxCfgTmode3

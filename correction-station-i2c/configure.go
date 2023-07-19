@@ -6,7 +6,6 @@ import (
 
 	i2c "github.com/d2r2/go-i2c"
 	"github.com/d2r2/go-logger"
-	"github.com/pkg/errors"
 )
 
 const (
@@ -27,6 +26,8 @@ const (
 	ubxCfgTmode3   = 0x71
 	maxPayloadSize = 256
 	ubxCfgCfg      = 0x09
+	ubxCfgPrt      = 0x00
+	comTypeRTCM3   = (1 << 5)
 
 	ubxNmeaMsb = 0xF0 // All NMEA enable commands have 0xF0 as MSB. Equal to UBX_CLASS_NMEA
 	ubxNmeaGga = 0x00 // GxGGA (Global positioning system fix data)
@@ -84,6 +85,10 @@ func ConfigureBaseRTKStation(newConf *Config) error {
 		msgsToDisable:   nmeaMsgs, // defaults
 	}
 
+	if err := c.setRTCMOutput(); err != nil {
+		return err
+	}
+
 	err := c.i2cConfigure(newConf)
 	if err != nil {
 		return err
@@ -127,6 +132,22 @@ func (c *configCommand) i2cConfigure(newConf *Config) error {
 
 	c.i2cbus = i2cBus
 
+	return nil
+}
+
+// ensure the chip can out RTCM correction messages
+func (c *configCommand) setRTCMOutput() error {
+	cls := ubxClassCfg
+	id := ubxCfgPrt
+	msgLen := 20
+	payloadCfg := make([]byte, 15)
+	payloadCfg[14] = comTypeRTCM3
+
+	err := c.sendCommand(cls, id, msgLen, payloadCfg)
+
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -218,9 +239,6 @@ func (c *configCommand) enableSVIN() error {
 
 func (c *configCommand) setSurveyMode(mode int, requiredAccuracy float64, observationTime int) error {
 	payloadCfg := make([]byte, 40)
-	if len(payloadCfg) == 0 {
-		return errors.New("must specify payload")
-	}
 
 	cls := ubxClassCfg
 	id := ubxCfgTmode3

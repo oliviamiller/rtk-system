@@ -16,8 +16,7 @@ import (
 )
 
 var (
-	Model               = resource.NewModel("viam-labs", "sensor", "correction-station-serial")
-	errRequiredAccuracy = errors.New("required accuracy can be a fixed number 1-5, 5 being the highest accuracy")
+	Model = resource.NewModel("viam-labs", "sensor", "correction-station-serial")
 )
 
 func init() {
@@ -41,7 +40,7 @@ func init() {
 }
 
 type Config struct {
-	RequiredAccuracy float64 `json:"required_accuracy,omitempty"` // fixed number 1-5, 5 being the highest accuracy
+	RequiredAccuracy float64 `json:"required_accuracy,omitempty"`
 	RequiredTime     int     `json:"required_time_sec,omitempty"`
 
 	SerialPath     string `json:"serial_path"`
@@ -56,9 +55,6 @@ func (cfg *Config) Validate(path string) ([]string, error) {
 	var deps []string
 	if cfg.RequiredAccuracy == 0 {
 		return nil, utils.NewConfigValidationFieldRequiredError(path, "required_accuracy")
-	}
-	if cfg.RequiredAccuracy < 0 || cfg.RequiredAccuracy > 5 {
-		return nil, errRequiredAccuracy
 	}
 	if cfg.RequiredTime == 0 {
 		return nil, utils.NewConfigValidationFieldRequiredError(path, "required_time_sec")
@@ -113,6 +109,7 @@ func newRTKStationSerial(
 	}
 
 	if newConf.TestChan == nil {
+		var err error
 		r.reader, err = r.openReader(newConf.SerialPath, newConf.SerialBaudRate)
 		if err != nil {
 			r.logger.Errorf("Error opening the serial port", err)
