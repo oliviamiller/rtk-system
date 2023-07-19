@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 
+	i2c "github.com/d2r2/go-i2c"
+	"github.com/d2r2/go-logger"
 	"github.com/edaniels/golog"
 	"github.com/pkg/errors"
 	"go.viam.com/utils"
@@ -74,21 +76,15 @@ func (cfg *Config) Validate(path string) ([]string, error) {
 type rtkStationI2C struct {
 	resource.Named
 	resource.AlwaysRebuild
-	logger           golog.Logger
-	correctionSource correctionSource
-	protocol         string
-	i2cPath          i2cBusAddr
+	logger  golog.Logger
+	i2cPath i2cBusAddr
+	i2cBus  *i2c.I2C
 
 	cancelCtx               context.Context
 	cancelFunc              func()
 	activeBackgroundWorkers sync.WaitGroup
 
 	err movementsensor.LastError
-}
-
-type correctionSource interface {
-	Start(ready chan<- bool)
-	Close(ctx context.Context) error
 }
 
 type i2cBusAddr struct {
@@ -116,17 +112,13 @@ func newRTKStationI2C(
 
 	err := ConfigureBaseRTKStation(newConf)
 	if err != nil {
-		r.logger.Info("rtk base station could not be configured")
-		return r, err
+		r.logger.Warn("rtk base station could not be configured")
 	}
 
 	// Init correction source
 	r.i2cPath.addr = byte(newConf.I2CAddr)
 	r.i2cPath.bus = newConf.I2CBus
-	r.correctionSource, err = newI2CCorrectionSource(deps, newConf, logger)
-	if err != nil {
-		return nil, err
-	}
+
 	r.logger.Debug("Starting")
 
 	r.start(ctx)
@@ -142,15 +134,45 @@ func (r *rtkStationI2C) start(ctx context.Context) {
 		if err := r.cancelCtx.Err(); err != nil {
 			return
 		}
-
-		// read from correction source
-		ready := make(chan bool)
-		r.correctionSource.Start(ready)
-
 		select {
-		case <-ready:
 		case <-r.cancelCtx.Done():
 			return
+		default:
+		}
+
+		var err error
+		// change log level
+		logger.ChangePackageLogLevel("i2c", logger.InfoLevel)
+
+		buf := make([]byte, 1024)
+
+		for err == nil {
+			select {
+			case <-r.cancelCtx.Done():
+				return
+			default:
+			}
+
+			// Open I2C handle every time
+			r.i2cBus, err = i2c.NewI2C(r.i2cPath.addr, r.i2cPath.bus)
+			r.err.Set(err)
+
+			// Read correction data
+			_, err = r.i2cBus.ReadBytes(buf)
+			r.err.Set(err)
+			if err != nil {
+				r.logger.Errorf("can't read bytes from i2c buffer: %s", err)
+				return
+			}
+
+			// close I2C handle
+			err = r.i2cBus.Close()
+			r.err.Set(err)
+			r.i2cBus = nil
+			if err != nil {
+				r.logger.Errorf("failed to close i2c handle: %s", err)
+				return
+			}
 		}
 	})
 }
@@ -160,11 +182,14 @@ func (r *rtkStationI2C) Close(ctx context.Context) error {
 	r.cancelFunc()
 	r.activeBackgroundWorkers.Wait()
 
-	// close correction source
-	err := r.correctionSource.Close(ctx)
-	if err != nil {
-		return err
+	if r.i2cBus != nil {
+		err := r.i2cBus.Close()
+		r.err.Set(err)
+		if err != nil {
+			r.logger.Errorf("failed to close i2c bus: %s", err)
+		}
 	}
+	r.i2cBus = nil
 
 	if err := r.err.Get(); err != nil && !errors.Is(err, context.Canceled) {
 		return err
@@ -172,7 +197,6 @@ func (r *rtkStationI2C) Close(ctx context.Context) error {
 	return nil
 }
 
-// TODO: add readings for fix and num sats in view
 func (r *rtkStationI2C) Readings(ctx context.Context, extra map[string]interface{}) (map[string]interface{}, error) {
 	return map[string]interface{}{}, errors.New("unimplemented")
 }

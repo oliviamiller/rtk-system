@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/edaniels/golog"
+	"github.com/go-gnss/rtcm/rtcm3"
 	"github.com/jacobsa/go-serial/serial"
 	"go.viam.com/rdk/components/movementsensor"
 	"go.viam.com/rdk/components/sensor"
@@ -34,7 +35,7 @@ func init() {
 				if err != nil {
 					return nil, err
 				}
-				return newSerialRTKStation(ctx, deps, conf.ResourceName(), newConf, logger)
+				return newRTKStationSerial(ctx, deps, conf.ResourceName(), newConf, logger)
 			},
 		})
 }
@@ -72,24 +73,18 @@ func (cfg *Config) Validate(path string) ([]string, error) {
 type rtkStationSerial struct {
 	resource.Named
 	resource.AlwaysRebuild
-	logger           golog.Logger
-	correctionSource correctionSource
-	protocol         string
-	serialWriter     io.Writer
+	logger golog.Logger
 
 	cancelCtx               context.Context
 	cancelFunc              func()
 	activeBackgroundWorkers sync.WaitGroup
 
+	reader io.ReadCloser // reads all messages from serial port
+
 	err movementsensor.LastError
 }
 
-type correctionSource interface {
-	Start(ready chan<- bool)
-	Close(ctx context.Context) error
-}
-
-func newSerialRTKStation(
+func newRTKStationSerial(
 	ctx context.Context,
 	deps resource.Dependencies,
 	name resource.Name,
@@ -107,24 +102,34 @@ func newSerialRTKStation(
 		err:        movementsensor.NewLastError(1, 1),
 	}
 
-	err := ConfigureBaseRTKStation(newConf)
-	if err != nil {
-		r.logger.Info("rtk base station could not be configured")
-		return r, err
-	}
-
-	r.correctionSource, err = newSerialCorrectionSource(newConf, logger)
-	if err != nil {
-		return nil, err
-	}
-	// set a default baud rate if not specficed in config
+	// set a default baud rate if not specified in config
 	if newConf.SerialBaudRate == 0 {
 		newConf.SerialBaudRate = 38400
 	}
 
+	err := ConfigureBaseRTKStation(newConf)
+	if err != nil {
+		r.logger.Warn("rtk base station could not be configured")
+	}
+
+	if newConf.TestChan == nil {
+		r.reader, err = r.openReader(newConf.SerialPath, newConf.SerialBaudRate)
+		if err != nil {
+			r.logger.Errorf("Error opening the serial port", err)
+			return nil, err
+		}
+	}
+
+	r.logger.Debug("Starting")
+	r.start(ctx)
+
+	return r, r.err.Get()
+}
+
+func (r *rtkStationSerial) openReader(path string, baud int) (io.ReadCloser, error) {
 	options := serial.OpenOptions{
-		PortName:        newConf.SerialPath,
-		BaudRate:        uint(newConf.SerialBaudRate),
+		PortName:        path,
+		BaudRate:        uint(baud),
 		DataBits:        8,
 		StopBits:        1,
 		MinimumReadSize: 4,
@@ -134,14 +139,7 @@ func newSerialRTKStation(
 	if err != nil {
 		return nil, err
 	}
-
-	r.logger.Debug("Init serial writer")
-	r.serialWriter = io.Writer(port)
-
-	r.logger.Debug("Starting")
-
-	r.start(ctx)
-	return r, r.err.Get()
+	return port, nil
 }
 
 // Start starts reading from the correction source and sends corrections to the radio/bluetooth.
@@ -153,15 +151,33 @@ func (r *rtkStationSerial) start(ctx context.Context) {
 		if err := r.cancelCtx.Err(); err != nil {
 			return
 		}
-
-		// start the correction source
-		ready := make(chan bool)
-		r.correctionSource.Start(ready)
-
 		select {
-		case <-ready:
 		case <-r.cancelCtx.Done():
 			return
+		default:
+		}
+
+		// Read the rctm messages just to make sure that they are coming in, return if not.
+		scanner := rtcm3.NewScanner(r.reader)
+
+		for {
+			select {
+			case <-r.cancelCtx.Done():
+				return
+			default:
+			}
+
+			msg, err := scanner.NextMessage()
+			if err != nil {
+				r.logger.Errorf("Error reading RTCM message: %s", err)
+				r.err.Set(err)
+				return
+			}
+			switch msg.(type) {
+			case rtcm3.MessageUnknown:
+				continue
+			default:
+			}
 		}
 	})
 }
@@ -171,25 +187,24 @@ func (r *rtkStationSerial) Close(ctx context.Context) error {
 	r.cancelFunc()
 	r.activeBackgroundWorkers.Wait()
 
-	// close correction source
-	err := r.correctionSource.Close(ctx)
-	if err != nil {
-		return err
+	// close correction reader
+	if r.reader != nil {
+		err := r.reader.Close()
+		r.err.Set(err)
+		if err != nil {
+			r.logger.Errorf("failed to close the serial reader: %s", err)
+		}
 	}
-
-	// close the serial port
-	err = r.serialWriter.(io.ReadWriteCloser).Close()
-	if err != nil {
-		return err
-	}
+	r.reader = nil
 
 	if err := r.err.Get(); err != nil && !errors.Is(err, context.Canceled) {
 		return err
 	}
+
 	return nil
 }
 
-// TODO: add readings for fix and num sats in view
+// Readings not supported.
 func (r *rtkStationSerial) Readings(ctx context.Context, extra map[string]interface{}) (map[string]interface{}, error) {
 	return map[string]interface{}{}, errors.New("unimplemented")
 }
