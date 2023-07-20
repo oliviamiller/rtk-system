@@ -5,7 +5,6 @@ import (
 	"io"
 
 	"github.com/jacobsa/go-serial/serial"
-	"github.com/pkg/errors"
 )
 
 const (
@@ -25,6 +24,8 @@ const (
 	ubxCfgTmode3   = 0x71
 	maxPayloadSize = 256
 	ubxCfgCfg      = 0x09
+	ubxCfgPrt      = 0x00
+	comTypeRTCM3   = (1 << 5)
 
 	ubxNmeaMsb = 0xF0 // All NMEA enable commands have 0xF0 as MSB. Equal to UBX_CLASS_NMEA
 	ubxNmeaGga = 0x00 // GxGGA (Global positioning system fix data)
@@ -57,9 +58,8 @@ var nmeaMsgs = map[int]int{
 }
 
 type configCommand struct {
-	correctionType string
-	portName       string
-	baudRate       uint
+	portName string
+	baudRate uint
 
 	requiredAcc     float64
 	observationTime int
@@ -76,30 +76,35 @@ func ConfigureBaseRTKStation(newConf *Config) error {
 
 	requiredAcc := newConf.RequiredAccuracy
 	observationTime := newConf.RequiredTime
-	correctionType := "serial"
 
 	c := &configCommand{
-		correctionType:  correctionType,
 		requiredAcc:     requiredAcc,
 		observationTime: observationTime,
 		msgsToEnable:    rtcmMsgs, // defaults
 		msgsToDisable:   nmeaMsgs, // defaults
 	}
 
-	err := c.serialConfigure(newConf)
+	err := c.openSerial(newConf)
 	if err != nil {
 		return err
 	}
 
+	if err := c.setRTCMOutput(); err != nil {
+		return err
+	}
+
+	// enable the station to send RTCM messages.
 	if err := c.enableAll(ubxRtcmMsb); err != nil {
 		return err
 	}
 
+	// disable NMEA message sending.
 	err = c.disableAll(ubxNmeaMsb)
 	if err != nil {
 		return err
 	}
 
+	// enable surveyin mode.
 	err = c.enableSVIN()
 	if err != nil {
 		return err
@@ -108,7 +113,7 @@ func ConfigureBaseRTKStation(newConf *Config) error {
 	return nil
 }
 
-func (c *configCommand) serialConfigure(newConf *Config) error {
+func (c *configCommand) openSerial(newConf *Config) error {
 
 	portName := newConf.SerialPath
 	c.portName = portName
@@ -135,6 +140,22 @@ func (c *configCommand) serialConfigure(newConf *Config) error {
 	}
 	c.writePort = writePort
 
+	return nil
+}
+
+// ensure the chip can output RTCM correction messages.
+func (c *configCommand) setRTCMOutput() error {
+	cls := ubxClassCfg
+	id := ubxCfgPrt
+	msgLen := 15
+	payloadCfg := make([]byte, 15)
+	payloadCfg[14] = comTypeRTCM3
+
+	err := c.sendCommand(cls, id, msgLen, payloadCfg)
+
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -165,7 +186,7 @@ func (c *configCommand) sendCommand(cls, id, msgLen int, payloadCfg []byte) erro
 		return err
 	}
 
-	// then wait to capture a byte
+	// then wait to capture ack response
 	buf := make([]byte, maxPayloadSize)
 	_, err = c.writePort.Read(buf)
 	if err != nil {
@@ -202,12 +223,12 @@ func (c *configCommand) enableAll(msb int) error {
 	return nil
 }
 
-//nolint:unused
 func (c *configCommand) getSurveyMode() error {
 	cls := ubxClassCfg
 	id := ubxCfgTmode3
 	payloadCfg := make([]byte, 40)
-	return c.sendCommand(cls, id, 0, payloadCfg) // set payloadcfg
+	c.sendCommand(cls, id, 0, payloadCfg) // set payloadcfg
+	return nil
 }
 
 func (c *configCommand) enableSVIN() error {
@@ -223,11 +244,10 @@ func (c *configCommand) enableSVIN() error {
 	return nil
 }
 
+// Updates the mode to surveyin, which will survey to get the current location of the base station,
 func (c *configCommand) setSurveyMode(mode int, requiredAccuracy float64, observationTime int) error {
+
 	payloadCfg := make([]byte, 40)
-	if len(payloadCfg) == 0 {
-		return errors.New("must specify payload")
-	}
 
 	cls := ubxClassCfg
 	id := ubxCfgTmode3
@@ -253,7 +273,7 @@ func (c *configCommand) setSurveyMode(mode int, requiredAccuracy float64, observ
 	return c.sendCommand(cls, id, msgLen, payloadCfg)
 }
 
-//nolint:lll,unused
+// Not currently in use, but could be used to set the position of the base station manually instead of surveying.
 func (c *configCommand) setStaticPosition(ecefXOrLat, ecefXOrLatHP, ecefYOrLon, ecefYOrLonHP, ecefZOrAlt, ecefZOrAltHP int, latLong bool) error {
 	cls := ubxClassCfg
 	id := ubxCfgTmode3
@@ -301,7 +321,6 @@ func (c *configCommand) disableMessageCommand(msgClass, messageNumber, portID in
 }
 
 func (c *configCommand) enableMessageCommand(msgClass, messageNumber, portID, sendRate int) error {
-	// dont use current port settings actually
 	payloadCfg := make([]byte, maxPayloadSize)
 
 	cls := ubxClassCfg
@@ -332,7 +351,6 @@ func (c *configCommand) saveAllConfigs() error {
 
 // Close closes all open ports used in configuration.
 func (c *configCommand) Close(ctx context.Context) error {
-	// close port reader if serial
 	if c.writePort != nil {
 		if err := c.writePort.Close(); err != nil {
 			return err

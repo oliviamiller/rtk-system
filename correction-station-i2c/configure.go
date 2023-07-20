@@ -6,7 +6,6 @@ import (
 
 	i2c "github.com/d2r2/go-i2c"
 	"github.com/d2r2/go-logger"
-	"github.com/pkg/errors"
 )
 
 const (
@@ -27,6 +26,8 @@ const (
 	ubxCfgTmode3   = 0x71
 	maxPayloadSize = 256
 	ubxCfgCfg      = 0x09
+	ubxCfgPrt      = 0x00
+	comTypeRTCM3   = (1 << 5)
 
 	ubxNmeaMsb = 0xF0 // All NMEA enable commands have 0xF0 as MSB. Equal to UBX_CLASS_NMEA
 	ubxNmeaGga = 0x00 // GxGGA (Global positioning system fix data)
@@ -59,9 +60,8 @@ var nmeaMsgs = map[int]int{
 }
 
 type configCommand struct {
-	correctionType string
-	i2cbus         *i2c.I2C
-	baudRate       uint
+	i2cbus   *i2c.I2C
+	baudRate uint
 
 	requiredAcc     float64
 	observationTime int
@@ -75,32 +75,37 @@ type configCommand struct {
 // ConfigureBaseRTKStation configures an RTK chip to act as a base station and send correction data.
 func ConfigureBaseRTKStation(newConf *Config) error {
 
-	correctionType := "i2c"
 	requiredAcc := newConf.RequiredAccuracy
 	observationTime := newConf.RequiredTime
 
 	c := &configCommand{
-		correctionType:  correctionType,
 		requiredAcc:     requiredAcc,
 		observationTime: observationTime,
 		msgsToEnable:    rtcmMsgs, // defaults
 		msgsToDisable:   nmeaMsgs, // defaults
 	}
 
-	err := c.i2cConfigure(newConf)
+	if err := c.setRTCMOutput(); err != nil {
+		return err
+	}
+
+	err := c.openI2C(newConf)
 	if err != nil {
 		return err
 	}
 
+	// enable the station to send RTCM messages
 	if err := c.enableAll(ubxRtcmMsb); err != nil {
 		return err
 	}
 
+	// disable NMEA message sending
 	err = c.disableAll(ubxNmeaMsb)
 	if err != nil {
 		return err
 	}
 
+	// enable survey in mode
 	err = c.enableSVIN()
 	if err != nil {
 		return err
@@ -109,7 +114,7 @@ func ConfigureBaseRTKStation(newConf *Config) error {
 	return nil
 }
 
-func (c *configCommand) i2cConfigure(newConf *Config) error {
+func (c *configCommand) openI2C(newConf *Config) error {
 
 	baudRate := newConf.I2CBaudRate
 	if baudRate == 0 {
@@ -127,6 +132,22 @@ func (c *configCommand) i2cConfigure(newConf *Config) error {
 
 	c.i2cbus = i2cBus
 
+	return nil
+}
+
+// ensure the chip can out RTCM correction messages
+func (c *configCommand) setRTCMOutput() error {
+	cls := ubxClassCfg
+	id := ubxCfgPrt
+	msgLen := 20
+	payloadCfg := make([]byte, 15)
+	payloadCfg[14] = comTypeRTCM3
+
+	err := c.sendCommand(cls, id, msgLen, payloadCfg)
+
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -218,9 +239,6 @@ func (c *configCommand) enableSVIN() error {
 
 func (c *configCommand) setSurveyMode(mode int, requiredAccuracy float64, observationTime int) error {
 	payloadCfg := make([]byte, 40)
-	if len(payloadCfg) == 0 {
-		return errors.New("must specify payload")
-	}
 
 	cls := ubxClassCfg
 	id := ubxCfgTmode3
@@ -246,7 +264,7 @@ func (c *configCommand) setSurveyMode(mode int, requiredAccuracy float64, observ
 	return c.sendCommand(cls, id, msgLen, payloadCfg)
 }
 
-//nolint:lll,unused
+// Not currently in use, but could be used to set the position of the base station manually instead of surveying.
 func (c *configCommand) setStaticPosition(ecefXOrLat, ecefXOrLatHP, ecefYOrLon, ecefYOrLonHP, ecefZOrAlt, ecefZOrAltHP int, latLong bool) error {
 	cls := ubxClassCfg
 	id := ubxCfgTmode3
@@ -294,7 +312,6 @@ func (c *configCommand) disableMessageCommand(msgClass, messageNumber, portID in
 }
 
 func (c *configCommand) enableMessageCommand(msgClass, messageNumber, portID, sendRate int) error {
-	// dont use current port settings actually
 	payloadCfg := make([]byte, maxPayloadSize)
 
 	cls := ubxClassCfg
@@ -310,6 +327,7 @@ func (c *configCommand) enableMessageCommand(msgClass, messageNumber, portID, se
 	return c.sendCommand(cls, id, msgLen, payloadCfg)
 }
 
+// This saves the configuration to flash and BBR
 func (c *configCommand) saveAllConfigs() error {
 	cls := ubxClassCfg
 	id := ubxCfgCfg

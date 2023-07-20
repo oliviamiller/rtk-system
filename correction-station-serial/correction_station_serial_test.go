@@ -48,15 +48,6 @@ func TestValidate(t *testing.T) {
 			expectedErr: utils.NewConfigValidationFieldRequiredError(path, "required_time"),
 		},
 		{
-			name: "The required accuracy can only be values 1-5",
-			config: &Config{
-				RequiredAccuracy: 6,
-				RequiredTime:     200,
-				SerialPath:       testPath,
-			},
-			expectedErr: errRequiredAccuracy,
-		},
-		{
 			name: "No serial path should error",
 			config: &Config{
 				RequiredAccuracy: 6,

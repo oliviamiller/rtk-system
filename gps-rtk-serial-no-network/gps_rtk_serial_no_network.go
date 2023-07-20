@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log"
 	"math"
 	"sync"
 
@@ -302,9 +301,6 @@ func (g *rtkSerialNoNetwork) Position(ctx context.Context, extra map[string]inte
 	defer g.dataMu.RUnlock()
 
 	currentPosition := g.data.Location
-
-	log.Println("current positon")
-	log.Println(currentPosition)
 
 	if currentPosition == nil {
 		return lastPosition, 0, errNilLocation
