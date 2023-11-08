@@ -1,0 +1,25 @@
+{
+    "module_id": "viam-labs:rtk-system",
+    "visibility": "public",
+    "url": "https://github.com/viam-labs/rtk-system",
+    "description": "Implementation of RTCM base stations and RTK GPS with no network connection through serial or i2c connections.",
+    "models": [
+      {
+        "api": "viam:component:sensor",
+        "model": "viam-labs:sensor:correction-station-i2c"
+      },
+      {
+        "api": "viam:component:sensor",
+        "model": "viam-labs:sensor:correction-station-serial"
+      },
+      {
+        "api": "viam:component:movement_sensor",
+        "model": "viam-labs:movement-sensor:gps-rtk-i2c-no-network"
+      },
+      {
+        "api": "viam:component:movement_sensor",
+        "model": "viam-labs:movement-sensor:gps-rtk-serial-no-network"
+      }
+    ],
+    "entrypoint": "../rtk-system/"
+  }
